@@ -1,139 +1,466 @@
+"""
+Futbol DB — 10 Büyük Lig, Gerçek Oyuncular, Otomatik Maç Sistemi
+"""
 import sqlite3
 import random
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from typing import Optional
 import os
 
-# Railway'de /data volume'u varsa orası, yoksa lokal klasör
 _DATA_DIR = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(_DATA_DIR, "parti.db")
 
+# ─── 10 Büyük Lig Tanımları ────────────────────────────────────────────────
 
-# ─── Ülkeye göre oyuncu havuzu ─────────────────────────────────────────────
-OYUNCU_HAVUZU = {
-    "TR": [
-        ("Ahmet Yılmaz",65), ("Mehmet Kaya",63), ("Ali Demir",68), ("Murat Şahin",70),
-        ("Emre Çelik",66), ("Serkan Koç",64), ("Burak Arslan",72), ("Kemal Kurt",61),
-        ("Arda Doğan",75), ("Caner Aydın",67), ("Sinan Polat",69), ("Fatih Güneş",62),
-        ("Taner Yıldız",71), ("Okan Öztürk",65), ("Yasin Kılıç",63), ("Levent Çetin",68),
-        ("Ercan Balcı",60), ("Tolga Özdemir",74), ("Kadir Kaplan",66), ("Alper Bozkurt",70),
-        ("Kerem Güler",73), ("Furkan Duman",65), ("Mert Özer",69), ("Doruk Ateş",67),
-        ("Hasan Bulut",62), ("Volkan Karaca",71), ("Barış Demirci",64), ("Selim Işık",66),
-        ("Tarık Avcı",68), ("Haluk Sever",63), ("Uğur Aslan",70), ("Savaş Gürbüz",65),
-        ("İbrahim Çevik",67), ("Ömer Albayrak",69), ("Orhan Sarı",62), ("Cemal Taş",64),
-    ],
-    "BR": [
-        ("Carlos Silva",74), ("Rodrigo Santos",77), ("Lucas Oliveira",72), ("Felipe Costa",76),
-        ("Thiago Pereira",79), ("Gabriel Alves",73), ("Matheus Lima",71), ("Bruno Ferreira",75),
-        ("Anderson Souza",78), ("Marcelo Rocha",70), ("Diego Mendes",76), ("Rafael Cruz",74),
-        ("Leandro Barbosa",72), ("Vinicius Gomes",80), ("Pedro Nascimento",73), ("Neyton Jr",82),
-        ("Roberto Azevedo",69), ("Alexandre Dias",71), ("Eduardo Carvalho",75), ("Gustavo Ribeiro",74),
-    ],
-    "ES": [
-        ("Carlos García",73), ("Sergio López",76), ("Javier Martínez",71), ("Alejandro Rodríguez",75),
-        ("Pablo Hernández",79), ("David González",72), ("Andrés Sánchez",74), ("Rubén Pérez",70),
-        ("Iker Fernández",77), ("Jorge Romero",73), ("Alberto Torres",71), ("Álvaro Jiménez",76),
-        ("Luis Moreno",74), ("Marcos Ruiz",72), ("Iñaki Alonso",78), ("Raúl Vidal",75),
-    ],
-    "FR": [
-        ("Pierre Dupont",73), ("Théo Martin",76), ("Antoine Bernard",74), ("Lucas Simon",72),
-        ("Hugo Thomas",79), ("Mathieu Petit",71), ("Romain Laurent",75), ("Julien Blanc",73),
-        ("Karim Besson",77), ("Noel Garnier",70), ("Baptiste Faure",74), ("Axel Renard",76),
-        ("Éric Morel",72), ("Florian Chevalier",78), ("Cédric Girard",74), ("Dylan Mercier",71),
-    ],
-    "DE": [
-        ("Hans Müller",74), ("Klaus Schmidt",71), ("Lukas Wagner",76), ("Felix Becker",73),
-        ("Niklas Hoffman",78), ("Jonas Fischer",72), ("Tobias Schulz",75), ("Moritz Meyer",70),
-        ("Leon Weber",79), ("Julian Koch",74), ("Patrick Bauer",73), ("Sebastian Wolf",76),
-        ("Maximilian Braun",72), ("Tim Schäfer",77), ("Daniel Zimmermann",75), ("André Krause",71),
-    ],
-    "AR": [
-        ("Diego Torres",75), ("Pablo Romero",78), ("Alejandro Flores",72), ("Nicolás Medina",76),
-        ("Rodrigo Castro",80), ("Lucas Vargas",74), ("Matías Ramos",77), ("Ezequiel Morales",73),
-        ("Maximiliano Cruz",79), ("Gonzalo Ortiz",75), ("Santiago Díaz",71), ("Facundo Reyes",76),
-    ],
-    "PT": [
-        ("João Silva",76), ("Pedro Santos",74), ("Tiago Costa",78), ("Rui Ferreira",72),
-        ("Bruno Pereira",80), ("Fábio Oliveira",75), ("André Carvalho",73), ("Luis Gomes",77),
-        ("Cristiano Jr",82), ("Renato Sousa",71), ("Paulo Lopes",74), ("Nuno Rodrigues",76),
-    ],
-    "EN": [
-        ("James Wilson",73), ("Thomas Johnson",71), ("Jack Williams",76), ("Harry Davies",74),
-        ("Oliver Brown",78), ("George Smith",72), ("William Jones",75), ("Charlie Taylor",73),
-        ("Ethan Anderson",77), ("Mason Clarke",70), ("Lucas Evans",74), ("Noah Roberts",76),
-    ],
-    "IT": [
-        ("Marco Rossi",74), ("Luca Ferrari",77), ("Alessandro Romano",72), ("Matteo Esposito",75),
-        ("Lorenzo Bianchi",79), ("Davide Colombo",73), ("Andrea Ricci",76), ("Simone Conti",71),
-        ("Filippo Moretti",78), ("Giovanni Marchetti",74), ("Riccardo Barbieri",72), ("Nicola Grasso",76),
-    ],
-    "NL": [
-        ("Daan van der Berg",75), ("Lars de Vries",73), ("Sven Bakker",77), ("Ruben Visser",74),
-        ("Joost Meijer",79), ("Niels de Boer",72), ("Tim Jansen",76), ("Bram Peters",73),
-        ("Liam Hendriks",78), ("Finn Smit",71),
-    ],
-    "NG": [
-        ("Emeka Okafor",76), ("Chidi Eze",74), ("Tunde Adeyemi",78), ("Segun Osei",73),
-        ("Kofi Mensah",80), ("Dele Abiodun",75), ("Ibrahim Diallo",77), ("Moussa Traore",72),
-        ("Sadio Keita",79), ("Boubacar Sow",76),
-    ],
+LIGLER = {
+    "premier_league":  {"ad": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League",  "ulke": "EN", "kisa": "PL"},
+    "la_liga":         {"ad": "🇪🇸 La Liga",               "ulke": "ES", "kisa": "LL"},
+    "bundesliga":      {"ad": "🇩🇪 Bundesliga",             "ulke": "DE", "kisa": "BL"},
+    "serie_a":         {"ad": "🇮🇹 Serie A",                "ulke": "IT", "kisa": "SA"},
+    "ligue_1":         {"ad": "🇫🇷 Ligue 1",               "ulke": "FR", "kisa": "L1"},
+    "super_lig":       {"ad": "🇹🇷 Süper Lig",             "ulke": "TR", "kisa": "SL"},
+    "eredivisie":      {"ad": "🇳🇱 Eredivisie",            "ulke": "NL", "kisa": "ED"},
+    "primeira_liga":   {"ad": "🇵🇹 Primeira Liga",         "ulke": "PT", "kisa": "PRL"},
+    "mls":             {"ad": "🇺🇸 MLS",                   "ulke": "US", "kisa": "MLS"},
+    "brasileiro":      {"ad": "🇧🇷 Brasileirão",           "ulke": "BR", "kisa": "BRA"},
 }
 
-# Tüm havuzdan düz liste
-def _tum_havuz():
-    sonuc = []
-    for ulke, oyuncular in OYUNCU_HAVUZU.items():
-        for isim, guc in oyuncular:
-            sonuc.append((isim, guc, ulke))
-    return sonuc
+# ─── Gerçek Takımlar ve Kadroları ──────────────────────────────────────────
 
-TUM_OYUNCULAR = _tum_havuz()
-
-POZISYONLAR_AGIRLIKLI = (
-    ["Kaleci"] * 2 + ["Defans"] * 5 + ["Orta Saha"] * 5 + ["Forvet"] * 3
-)
-
-# Otomatik kadro yapısı: Takım kurulunca verilecek kadro
-BASLANGIC_KADRO = [
-    ("Kaleci",    1, (55, 72)),    # 1 Kaleci
-    ("Kaleci",    1, (50, 65)),    # yedek Kaleci
-    ("Defans",    4, (58, 76)),    # 4 Defans
-    ("Orta Saha", 4, (58, 76)),    # 4 Orta Saha
-    ("Forvet",    3, (60, 78)),    # 3 Forvet
-    ("Defans",    1, (52, 68)),    # yedek Defans
-    ("Orta Saha", 1, (52, 68)),    # yedek OS
-    ("Forvet",    1, (54, 70)),    # yedek Forvet
-]  # toplam: 16 oyuncu
-
-
-def _deger_hesapla(guc: int) -> int:
-    """Güce göre gerçekçi piyasa değeri hesapla"""
-    if guc >= 85:
-        return random.randint(800_000, 2_000_000)
-    elif guc >= 78:
-        return random.randint(300_000, 800_000)
-    elif guc >= 72:
-        return random.randint(120_000, 300_000)
-    elif guc >= 65:
-        return random.randint(50_000, 120_000)
-    elif guc >= 58:
-        return random.randint(20_000, 50_000)
-    else:
-        return random.randint(8_000, 20_000)
-
-
-def rastgele_isim(kullanilmis: set) -> str:
-    shuffled = list(TUM_OYUNCULAR)
-    random.shuffle(shuffled)
-    for isim, _, _ in shuffled:
-        if isim not in kullanilmis:
-            return isim
-    suf = random.randint(2, 99)
-    return f"Oyuncu {suf}"
-
-BASLANGIC_PARASI = 500_000   # Otomatik kadro geldiği için daha az para yeter
-LIG1_LIMIT = 15
-LIG2_LIMIT = 10
+GERCEK_TAKIMLAR = {
+    # ── Premier League ──
+    "Manchester City": {
+        "lig": "premier_league", "forma": "#6CABDD",
+        "oyuncular": [
+            ("Ederson", "Kaleci", 90, "BR"), ("Stefan Ortega", "Kaleci", 78, "DE"),
+            ("Kyle Walker", "Defans", 84, "EN"), ("Manuel Akanji", "Defans", 84, "CH"),
+            ("Rúben Dias", "Defans", 90, "PT"), ("Joško Gvardiol", "Defans", 86, "HR"),
+            ("Rico Lewis", "Defans", 78, "EN"), ("Rodri", "Orta Saha", 93, "ES"),
+            ("Kevin De Bruyne", "Orta Saha", 91, "BE"), ("Bernardo Silva", "Orta Saha", 89, "PT"),
+            ("Phil Foden", "Orta Saha", 89, "EN"), ("İlkay Gündoğan", "Orta Saha", 85, "DE"),
+            ("Matheus Nunes", "Orta Saha", 81, "PT"), ("Erling Haaland", "Forvet", 95, "NO"),
+            ("Julián Álvarez", "Forvet", 86, "AR"), ("Jeremy Doku", "Forvet", 84, "BE"),
+            ("Jack Grealish", "Forvet", 83, "EN"), ("Savinho", "Forvet", 79, "BR"),
+        ]
+    },
+    "Arsenal": {
+        "lig": "premier_league", "forma": "#EF0107",
+        "oyuncular": [
+            ("David Raya", "Kaleci", 87, "ES"), ("Karl Jakob Hein", "Kaleci", 72, "EE"),
+            ("Ben White", "Defans", 85, "EN"), ("William Saliba", "Defans", 88, "FR"),
+            ("Gabriel Magalhães", "Defans", 87, "BR"), ("Oleksandr Zinchenko", "Defans", 82, "UA"),
+            ("Takehiro Tomiyasu", "Defans", 80, "JP"), ("Thomas Partey", "Orta Saha", 84, "GH"),
+            ("Martin Ødegaard", "Orta Saha", 90, "NO"), ("Declan Rice", "Orta Saha", 88, "EN"),
+            ("Jorginho", "Orta Saha", 80, "IT"), ("Bukayo Saka", "Forvet", 90, "EN"),
+            ("Leandro Trossard", "Forvet", 84, "BE"), ("Gabriel Martinelli", "Forvet", 85, "BR"),
+            ("Kai Havertz", "Forvet", 84, "DE"), ("Eddie Nketiah", "Forvet", 79, "EN"),
+        ]
+    },
+    "Liverpool": {
+        "lig": "premier_league", "forma": "#C8102E",
+        "oyuncular": [
+            ("Alisson Becker", "Kaleci", 91, "BR"), ("Caoimhín Kelleher", "Kaleci", 78, "IE"),
+            ("Trent Alexander-Arnold", "Defans", 88, "EN"), ("Virgil van Dijk", "Defans", 91, "NL"),
+            ("Ibrahima Konaté", "Defans", 85, "FR"), ("Andrew Robertson", "Defans", 85, "SC"),
+            ("Joe Gomez", "Defans", 81, "EN"), ("Alexis Mac Allister", "Orta Saha", 87, "AR"),
+            ("Dominik Szoboszlai", "Orta Saha", 85, "HU"), ("Ryan Gravenberch", "Orta Saha", 83, "NL"),
+            ("Harvey Elliott", "Orta Saha", 79, "EN"), ("Curtis Jones", "Orta Saha", 80, "EN"),
+            ("Mohamed Salah", "Forvet", 92, "EG"), ("Darwin Núñez", "Forvet", 84, "UY"),
+            ("Diogo Jota", "Forvet", 84, "PT"), ("Luis Díaz", "Forvet", 86, "CO"),
+            ("Cody Gakpo", "Forvet", 83, "NL"),
+        ]
+    },
+    "Chelsea": {
+        "lig": "premier_league", "forma": "#034694",
+        "oyuncular": [
+            ("Robert Sánchez", "Kaleci", 82, "ES"), ("Filip Jørgensen", "Kaleci", 78, "DK"),
+            ("Reece James", "Defans", 86, "EN"), ("Levi Colwill", "Defans", 82, "EN"),
+            ("Wesley Fofana", "Defans", 82, "FR"), ("Ben Chilwell", "Defans", 81, "EN"),
+            ("Malo Gusto", "Defans", 80, "FR"), ("Enzo Fernández", "Orta Saha", 87, "AR"),
+            ("Moisés Caicedo", "Orta Saha", 86, "EC"), ("Conor Gallagher", "Orta Saha", 82, "EN"),
+            ("Cole Palmer", "Orta Saha", 88, "EN"), ("Romeo Lavia", "Orta Saha", 80, "BE"),
+            ("Nicolas Jackson", "Forvet", 82, "SN"), ("Christopher Nkunku", "Forvet", 85, "FR"),
+            ("Mykhailo Mudryk", "Forvet", 82, "UA"), ("João Félix", "Forvet", 83, "PT"),
+            ("Noni Madueke", "Forvet", 81, "EN"),
+        ]
+    },
+    "Manchester United": {
+        "lig": "premier_league", "forma": "#DA291C",
+        "oyuncular": [
+            ("André Onana", "Kaleci", 85, "CM"), ("Altay Bayındır", "Kaleci", 77, "TR"),
+            ("Aaron Wan-Bissaka", "Defans", 80, "EN"), ("Harry Maguire", "Defans", 79, "EN"),
+            ("Lisandro Martínez", "Defans", 84, "AR"), ("Luke Shaw", "Defans", 82, "EN"),
+            ("Diogo Dalot", "Defans", 82, "PT"), ("Casemiro", "Orta Saha", 84, "BR"),
+            ("Bruno Fernandes", "Orta Saha", 88, "PT"), ("Mason Mount", "Orta Saha", 81, "EN"),
+            ("Kobbie Mainoo", "Orta Saha", 80, "EN"), ("Scott McTominay", "Orta Saha", 81, "SC"),
+            ("Marcus Rashford", "Forvet", 84, "EN"), ("Rasmus Højlund", "Forvet", 82, "DK"),
+            ("Antony", "Forvet", 79, "BR"), ("Alejandro Garnacho", "Forvet", 81, "AR"),
+        ]
+    },
+    "Tottenham": {
+        "lig": "premier_league", "forma": "#132257",
+        "oyuncular": [
+            ("Guglielmo Vicario", "Kaleci", 84, "IT"), ("Fraser Forster", "Kaleci", 75, "SC"),
+            ("Pedro Porro", "Defans", 83, "ES"), ("Cristian Romero", "Defans", 86, "AR"),
+            ("Micky van de Ven", "Defans", 84, "NL"), ("Destiny Udogie", "Defans", 82, "IT"),
+            ("Ben Davies", "Defans", 79, "WA"), ("Rodrigo Bentancur", "Orta Saha", 82, "UY"),
+            ("James Maddison", "Orta Saha", 85, "EN"), ("Yves Bissouma", "Orta Saha", 81, "ML"),
+            ("Pape Matar Sarr", "Orta Saha", 79, "SN"), ("Son Heung-min", "Forvet", 88, "KR"),
+            ("Dejan Kulusevski", "Forvet", 84, "SE"), ("Richarlison", "Forvet", 82, "BR"),
+            ("Brennan Johnson", "Forvet", 80, "WA"), ("Timo Werner", "Forvet", 79, "DE"),
+        ]
+    },
+    # ── La Liga ──
+    "Real Madrid": {
+        "lig": "la_liga", "forma": "#FEBE10",
+        "oyuncular": [
+            ("Thibaut Courtois", "Kaleci", 91, "BE"), ("Andriy Lunin", "Kaleci", 82, "UA"),
+            ("Dani Carvajal", "Defans", 87, "ES"), ("Éder Militão", "Defans", 86, "BR"),
+            ("Antonio Rüdiger", "Defans", 87, "DE"), ("Ferland Mendy", "Defans", 85, "FR"),
+            ("David Alaba", "Defans", 85, "AT"), ("Nacho", "Defans", 80, "ES"),
+            ("Luka Modrić", "Orta Saha", 88, "HR"), ("Toni Kroos", "Orta Saha", 89, "DE"),
+            ("Aurélien Tchouaméni", "Orta Saha", 86, "FR"), ("Federico Valverde", "Orta Saha", 88, "UY"),
+            ("Eduardo Camavinga", "Orta Saha", 85, "FR"), ("Jude Bellingham", "Orta Saha", 91, "EN"),
+            ("Vinícius Jr.", "Forvet", 93, "BR"), ("Rodrygo", "Forvet", 87, "BR"),
+            ("Joselu", "Forvet", 80, "ES"), ("Brahim Díaz", "Forvet", 82, "ES"),
+        ]
+    },
+    "Barcelona": {
+        "lig": "la_liga", "forma": "#A50044",
+        "oyuncular": [
+            ("Marc-André ter Stegen", "Kaleci", 90, "DE"), ("Iñaki Peña", "Kaleci", 76, "ES"),
+            ("Jules Koundé", "Defans", 86, "FR"), ("Ronald Araújo", "Defans", 87, "UY"),
+            ("Pau Cubarsí", "Defans", 81, "ES"), ("Alejandro Balde", "Defans", 83, "ES"),
+            ("Iñigo Martínez", "Defans", 82, "ES"), ("Pedri", "Orta Saha", 90, "ES"),
+            ("Gavi", "Orta Saha", 88, "ES"), ("Frenkie de Jong", "Orta Saha", 87, "NL"),
+            ("Fermín López", "Orta Saha", 78, "ES"), ("Marc Casadó", "Orta Saha", 75, "ES"),
+            ("Robert Lewandowski", "Forvet", 90, "PL"), ("Lamine Yamal", "Forvet", 87, "ES"),
+            ("Raphinha", "Forvet", 86, "BR"), ("Ferran Torres", "Forvet", 81, "ES"),
+            ("Vitor Roque", "Forvet", 77, "BR"),
+        ]
+    },
+    "Atletico Madrid": {
+        "lig": "la_liga", "forma": "#CB3524",
+        "oyuncular": [
+            ("Jan Oblak", "Kaleci", 91, "SI"), ("Antonio Grbić", "Kaleci", 72, "RS"),
+            ("Nahuel Molina", "Defans", 83, "AR"), ("José María Giménez", "Defans", 85, "UY"),
+            ("César Azpilicueta", "Defans", 79, "ES"), ("Reinildo Mandava", "Defans", 80, "MZ"),
+            ("Axel Witsel", "Defans", 80, "BE"), ("Rodrigo De Paul", "Orta Saha", 84, "AR"),
+            ("Koke", "Orta Saha", 82, "ES"), ("Thomas Lemar", "Orta Saha", 80, "FR"),
+            ("Saúl Ñíguez", "Orta Saha", 79, "ES"), ("Pablo Barrios", "Orta Saha", 77, "ES"),
+            ("Antoine Griezmann", "Forvet", 89, "FR"), ("Álvaro Morata", "Forvet", 83, "ES"),
+            ("Memphis Depay", "Forvet", 81, "NL"), ("Samuel Lino", "Forvet", 79, "PT"),
+        ]
+    },
+    "Sevilla": {
+        "lig": "la_liga", "forma": "#D4AC0D",
+        "oyuncular": [
+            ("Ørjan Nyland", "Kaleci", 80, "NO"), ("Álvaro Fernández", "Kaleci", 74, "ES"),
+            ("Jesús Navas", "Defans", 78, "ES"), ("Loïc Badé", "Defans", 82, "FR"),
+            ("Marko Dmitrović", "Defans", 79, "RS"), ("Marcos Acuña", "Defans", 80, "AR"),
+            ("Fernando", "Orta Saha", 79, "BR"), ("Ivan Rakitić", "Orta Saha", 80, "HR"),
+            ("Adnan Januzaj", "Orta Saha", 77, "BE"), ("Suso", "Orta Saha", 78, "ES"),
+            ("Lukáš Hrošovský", "Orta Saha", 76, "SK"), ("Youssef En-Nesyri", "Forvet", 82, "MA"),
+            ("Lucas Ocampos", "Forvet", 82, "AR"), ("Rafa Mir", "Forvet", 78, "ES"),
+            ("Dodi Lukebakio", "Forvet", 79, "BE"),
+        ]
+    },
+    # ── Bundesliga ──
+    "Bayern München": {
+        "lig": "bundesliga", "forma": "#DC052D",
+        "oyuncular": [
+            ("Manuel Neuer", "Kaleci", 90, "DE"), ("Sven Ulreich", "Kaleci", 77, "DE"),
+            ("Joshua Kimmich", "Defans", 89, "DE"), ("Dayot Upamecano", "Defans", 86, "FR"),
+            ("Kim Min-jae", "Defans", 87, "KR"), ("Alphonso Davies", "Defans", 86, "CA"),
+            ("Matthijs de Ligt", "Defans", 84, "NL"), ("Leon Goretzka", "Orta Saha", 85, "DE"),
+            ("Thomas Müller", "Orta Saha", 86, "DE"), ("Aleksandar Pavlović", "Orta Saha", 78, "DE"),
+            ("Konrad Laimer", "Orta Saha", 81, "AT"), ("Raphaël Guerreiro", "Orta Saha", 82, "PT"),
+            ("Harry Kane", "Forvet", 92, "EN"), ("Leroy Sané", "Forvet", 88, "DE"),
+            ("Serge Gnabry", "Forvet", 85, "DE"), ("Kingsley Coman", "Forvet", 86, "FR"),
+            ("Mathys Tel", "Forvet", 78, "FR"),
+        ]
+    },
+    "Borussia Dortmund": {
+        "lig": "bundesliga", "forma": "#FDE100",
+        "oyuncular": [
+            ("Gregor Kobel", "Kaleci", 86, "CH"), ("Alexander Meyer", "Kaleci", 75, "DE"),
+            ("Mats Hummels", "Defans", 84, "DE"), ("Nico Schlotterbeck", "Defans", 82, "DE"),
+            ("Niklas Süle", "Defans", 82, "DE"), ("Ian Maatsen", "Defans", 80, "NL"),
+            ("Julian Ryerson", "Defans", 78, "NO"), ("Emre Can", "Orta Saha", 82, "DE"),
+            ("Marcel Sabitzer", "Orta Saha", 82, "AT"), ("Julien Duranville", "Orta Saha", 77, "BE"),
+            ("Giovanni Reyna", "Orta Saha", 78, "US"), ("Felix Nmecha", "Orta Saha", 78, "DE"),
+            ("Niclas Füllkrug", "Forvet", 83, "DE"), ("Karim Adeyemi", "Forvet", 81, "DE"),
+            ("Donyell Malen", "Forvet", 83, "NL"), ("Jamie Gittens", "Forvet", 78, "EN"),
+        ]
+    },
+    "Bayer Leverkusen": {
+        "lig": "bundesliga", "forma": "#E32221",
+        "oyuncular": [
+            ("Lukáš Hrádecký", "Kaleci", 84, "FI"), ("Matěj Kovář", "Kaleci", 80, "CZ"),
+            ("Jeremie Frimpong", "Defans", 83, "NL"), ("Jonathan Tah", "Defans", 84, "DE"),
+            ("Granit Xhaka", "Orta Saha", 85, "CH"), ("Florian Wirtz", "Orta Saha", 90, "DE"),
+            ("Robert Andrich", "Orta Saha", 82, "DE"), ("Exequiel Palacios", "Orta Saha", 81, "AR"),
+            ("Alex Grimaldo", "Defans", 83, "ES"), ("Piero Hincapié", "Defans", 81, "EC"),
+            ("Odilon Kossounou", "Defans", 80, "CI"), ("Edmond Tapsoba", "Defans", 80, "BF"),
+            ("Victor Boniface", "Forvet", 83, "NG"), ("Jonas Hofmann", "Forvet", 81, "DE"),
+            ("Amine Adli", "Forvet", 79, "FR"), ("Patrik Schick", "Forvet", 82, "CZ"),
+        ]
+    },
+    # ── Serie A ──
+    "Inter Milan": {
+        "lig": "serie_a", "forma": "#010E80",
+        "oyuncular": [
+            ("Yann Sommer", "Kaleci", 87, "CH"), ("Josep Martínez", "Kaleci", 78, "ES"),
+            ("Benjamin Pavard", "Defans", 85, "FR"), ("Francesco Acerbi", "Defans", 83, "IT"),
+            ("Alessandro Bastoni", "Defans", 87, "IT"), ("Federico Dimarco", "Defans", 84, "IT"),
+            ("Denzel Dumfries", "Defans", 83, "NL"), ("Nicolò Barella", "Orta Saha", 89, "IT"),
+            ("Hakan Çalhanoğlu", "Orta Saha", 87, "TR"), ("Henrikh Mkhitaryan", "Orta Saha", 81, "AM"),
+            ("Davide Frattesi", "Orta Saha", 82, "IT"), ("Kristjan Asllani", "Orta Saha", 78, "AL"),
+            ("Lautaro Martínez", "Forvet", 90, "AR"), ("Marcus Thuram", "Forvet", 86, "FR"),
+            ("Mehdi Taremi", "Forvet", 83, "IR"), ("Alexis Sánchez", "Forvet", 79, "CL"),
+        ]
+    },
+    "AC Milan": {
+        "lig": "serie_a", "forma": "#FB090B",
+        "oyuncular": [
+            ("Mike Maignan", "Kaleci", 89, "FR"), ("Marco Sportiello", "Kaleci", 76, "IT"),
+            ("Davide Calabria", "Defans", 80, "IT"), ("Fikayo Tomori", "Defans", 83, "EN"),
+            ("Malick Thiaw", "Defans", 81, "DE"), ("Theo Hernández", "Defans", 86, "FR"),
+            ("Strahinja Pavlović", "Defans", 80, "RS"), ("Youssouf Fofana", "Orta Saha", 83, "FR"),
+            ("Tijjani Reijnders", "Orta Saha", 84, "NL"), ("Ruben Loftus-Cheek", "Orta Saha", 82, "EN"),
+            ("Yunus Musah", "Orta Saha", 78, "US"), ("Ismael Bennacer", "Orta Saha", 82, "DZ"),
+            ("Rafael Leão", "Forvet", 88, "PT"), ("Christian Pulisic", "Forvet", 84, "US"),
+            ("Olivier Giroud", "Forvet", 82, "FR"), ("Noah Okafor", "Forvet", 79, "CH"),
+            ("Samuel Chukwueze", "Forvet", 80, "NG"),
+        ]
+    },
+    "Juventus": {
+        "lig": "serie_a", "forma": "#000000",
+        "oyuncular": [
+            ("Wojciech Szczęsny", "Kaleci", 87, "PL"), ("Carlo Pinsoglio", "Kaleci", 68, "IT"),
+            ("Andrea Cambiaso", "Defans", 82, "IT"), ("Gleison Bremer", "Defans", 85, "BR"),
+            ("Danilo", "Defans", 81, "BR"), ("Alex Sandro", "Defans", 78, "BR"),
+            ("Federico Gatti", "Defans", 80, "IT"), ("Manuel Locatelli", "Orta Saha", 83, "IT"),
+            ("Adrien Rabiot", "Orta Saha", 83, "FR"), ("Weston McKennie", "Orta Saha", 80, "US"),
+            ("Nicolás González", "Orta Saha", 80, "AR"), ("Fabio Miretti", "Orta Saha", 76, "IT"),
+            ("Dušan Vlahović", "Forvet", 87, "RS"), ("Federico Chiesa", "Forvet", 84, "IT"),
+            ("Moise Kean", "Forvet", 79, "IT"), ("Timothy Weah", "Forvet", 79, "US"),
+        ]
+    },
+    "Napoli": {
+        "lig": "serie_a", "forma": "#12A0C3",
+        "oyuncular": [
+            ("Alex Meret", "Kaleci", 84, "IT"), ("Pierluigi Gollini", "Kaleci", 78, "IT"),
+            ("Giovanni Di Lorenzo", "Defans", 84, "IT"), ("Amir Rrahmani", "Defans", 82, "KO"),
+            ("Min-jae Kim", "Defans", 87, "KR"), ("Mathías Olivera", "Defans", 80, "UY"),
+            ("Natan", "Defans", 77, "BR"), ("Stanislav Lobotka", "Orta Saha", 84, "SK"),
+            ("Piotr Zieliński", "Orta Saha", 85, "PL"), ("Eljif Elmas", "Orta Saha", 81, "MK"),
+            ("André-Frank Zambo Anguissa", "Orta Saha", 84, "CM"), ("Diego Demme", "Orta Saha", 77, "IT"),
+            ("Victor Osimhen", "Forvet", 90, "NG"), ("Khvicha Kvaratskhelia", "Forvet", 88, "GE"),
+            ("Matteo Politano", "Forvet", 81, "IT"), ("Giacomo Raspadori", "Forvet", 80, "IT"),
+        ]
+    },
+    # ── Ligue 1 ──
+    "Paris Saint-Germain": {
+        "lig": "ligue_1", "forma": "#004170",
+        "oyuncular": [
+            ("Gianluigi Donnarumma", "Kaleci", 90, "IT"), ("Keylor Navas", "Kaleci", 83, "CR"),
+            ("Achraf Hakimi", "Defans", 87, "MA"), ("Marquinhos", "Defans", 88, "BR"),
+            ("Lucas Hernández", "Defans", 83, "FR"), ("Presnel Kimpembe", "Defans", 82, "FR"),
+            ("Nuno Mendes", "Defans", 83, "PT"), ("Marco Verratti", "Orta Saha", 87, "IT"),
+            ("Fabian Ruiz", "Orta Saha", 83, "ES"), ("Warren Zaïre-Emery", "Orta Saha", 80, "FR"),
+            ("Vitinha", "Orta Saha", 84, "PT"), ("Gonçalo Ramos", "Forvet", 84, "PT"),
+            ("Ousmane Dembélé", "Forvet", 87, "FR"), ("Bradley Barcola", "Forvet", 82, "FR"),
+            ("Randal Kolo Muani", "Forvet", 83, "FR"), ("Lee Kang-in", "Forvet", 82, "KR"),
+            ("Desire Doue", "Forvet", 79, "FR"),
+        ]
+    },
+    "Olympique Marseille": {
+        "lig": "ligue_1", "forma": "#2CBFEB",
+        "oyuncular": [
+            ("Pau López", "Kaleci", 83, "ES"), ("Ruben Blanco", "Kaleci", 79, "ES"),
+            ("Jonathan Clauss", "Defans", 82, "FR"), ("Samuel Gigot", "Defans", 79, "FR"),
+            ("Chancel Mbemba", "Defans", 81, "CD"), ("Azzedine Ounahi", "Orta Saha", 80, "MA"),
+            ("Geoffrey Kondogbia", "Orta Saha", 81, "CF"), ("Valentin Rongier", "Orta Saha", 79, "FR"),
+            ("Jordan Veretout", "Orta Saha", 79, "FR"), ("Iliman Ndiaye", "Orta Saha", 78, "SN"),
+            ("Pierre-Emerick Aubameyang", "Forvet", 83, "GA"), ("Vitinha", "Forvet", 78, "PT"),
+            ("Ismaila Sarr", "Forvet", 80, "SN"), ("Alexis Sánchez", "Forvet", 80, "CL"),
+        ]
+    },
+    "Monaco": {
+        "lig": "ligue_1", "forma": "#CE1A26",
+        "oyuncular": [
+            ("Radosław Majecki", "Kaleci", 79, "PL"), ("Philipp Köhn", "Kaleci", 76, "DE"),
+            ("Vanderson", "Defans", 79, "BR"), ("Axel Disasi", "Defans", 81, "FR"),
+            ("Youssouf Fofana", "Orta Saha", 83, "FR"), ("Denis Zakaria", "Orta Saha", 81, "CH"),
+            ("Aleksandr Golovin", "Orta Saha", 81, "RU"), ("Caio Henrique", "Defans", 79, "BR"),
+            ("Mohamed Camara", "Orta Saha", 80, "GN"), ("Eliesse Ben Seghir", "Forvet", 78, "FR"),
+            ("Wissam Ben Yedder", "Forvet", 82, "FR"), ("Takumi Minamino", "Forvet", 81, "JP"),
+            ("Maghnes Akliouche", "Forvet", 77, "FR"), ("Folarin Balogun", "Forvet", 80, "US"),
+        ]
+    },
+    # ── Süper Lig ──
+    "Galatasaray": {
+        "lig": "super_lig", "forma": "#F02D04",
+        "oyuncular": [
+            ("Fernando Muslera", "Kaleci", 83, "UY"), ("Inaki Peña", "Kaleci", 75, "ES"),
+            ("Sacha Boey", "Defans", 79, "FR"), ("Davinson Sánchez", "Defans", 82, "CO"),
+            ("Victor Nelsson", "Defans", 80, "DK"), ("Patrick van Aanholt", "Defans", 77, "NL"),
+            ("Abdülkerim Bardakcı", "Defans", 78, "TR"), ("Dries Mertens", "Orta Saha", 82, "BE"),
+            ("Lucas Torreira", "Orta Saha", 82, "UY"), ("Kerem Aktürkoğlu", "Forvet", 80, "TR"),
+            ("Yunus Akgün", "Forvet", 76, "TR"), ("Bafétimbi Gomis", "Forvet", 77, "FR"),
+            ("Mauro Icardi", "Forvet", 83, "AR"), ("Sérgio Oliveira", "Orta Saha", 79, "PT"),
+            ("Milot Rashica", "Forvet", 78, "KO"), ("Hakim Ziyech", "Forvet", 83, "MA"),
+            ("Wilfried Zaha", "Forvet", 81, "CI"), ("Barış Alper Yılmaz", "Forvet", 79, "TR"),
+        ]
+    },
+    "Fenerbahçe": {
+        "lig": "super_lig", "forma": "#002F5F",
+        "oyuncular": [
+            ("Altay Bayındır", "Kaleci", 77, "TR"), ("İrfan Can Eğribayat", "Kaleci", 75, "TR"),
+            ("Bright Osayi-Samuel", "Defans", 78, "NG"), ("Attila Szalai", "Defans", 80, "HU"),
+            ("Alexander Djiku", "Defans", 81, "GH"), ("Ferdi Kadıoğlu", "Defans", 81, "TR"),
+            ("Enner Valencia", "Forvet", 79, "EC"), ("Miha Zajc", "Orta Saha", 78, "SI"),
+            ("İsmail Yüksek", "Orta Saha", 76, "TR"), ("Sebastian Szymański", "Orta Saha", 81, "PL"),
+            ("Fred", "Orta Saha", 81, "BR"), ("Dusan Tadic", "Forvet", 82, "RS"),
+            ("Cengiz Ünder", "Forvet", 80, "TR"), ("Edin Džeko", "Forvet", 82, "BA"),
+            ("Michy Batshuayi", "Forvet", 80, "BE"), ("Irfan Can Kahveci", "Orta Saha", 78, "TR"),
+        ]
+    },
+    "Beşiktaş": {
+        "lig": "super_lig", "forma": "#000000",
+        "oyuncular": [
+            ("Ersin Destanoğlu", "Kaleci", 79, "TR"), ("Mert Günok", "Kaleci", 77, "TR"),
+            ("Valentin Rosier", "Defans", 78, "FR"), ("João Mário", "Defans", 78, "PT"),
+            ("Domagoj Vida", "Defans", 79, "HR"), ("Josef de Souza", "Orta Saha", 79, "BR"),
+            ("Salih Uçan", "Orta Saha", 75, "TR"), ("Ernest Muçi", "Forvet", 77, "AL"),
+            ("Milot Rashica", "Forvet", 77, "KO"), ("Arthur Masuaku", "Defans", 77, "CD"),
+            ("Can Bozdoğan", "Orta Saha", 74, "DE"), ("Dele Alli", "Orta Saha", 77, "EN"),
+            ("Alex Oxlade-Chamberlain", "Orta Saha", 78, "EN"), ("Wout Weghorst", "Forvet", 81, "NL"),
+            ("Rachid Ghezzal", "Forvet", 79, "DZ"), ("Umut Meraş", "Defans", 75, "TR"),
+        ]
+    },
+    "Trabzonspor": {
+        "lig": "super_lig", "forma": "#7A0035",
+        "oyuncular": [
+            ("Uğurcan Çakır", "Kaleci", 81, "TR"), ("Matthäus Jöst", "Kaleci", 71, "DE"),
+            ("Ahmetcan Kaplan", "Defans", 77, "TR"), ("Marc Bartra", "Defans", 80, "ES"),
+            ("Paulo Vinicius", "Defans", 78, "BR"), ("Dorukhan Toköz", "Orta Saha", 76, "TR"),
+            ("Stefano Denswil", "Defans", 76, "NL"), ("Enis Destan", "Forvet", 74, "TR"),
+            ("Fountas", "Forvet", 78, "GR"), ("Andreas Cornelius", "Forvet", 80, "DK"),
+            ("Berat Özdemir", "Orta Saha", 74, "TR"), ("Erce Kardeşler", "Orta Saha", 73, "TR"),
+            ("Edin Višća", "Forvet", 79, "BA"), ("Stefano Denswil", "Defans", 75, "NL"),
+            ("Trezeguet", "Forvet", 79, "EG"),
+        ]
+    },
+    # ── Eredivisie ──
+    "Ajax": {
+        "lig": "eredivisie", "forma": "#CC0000",
+        "oyuncular": [
+            ("Remko Pasveer", "Kaleci", 81, "NL"), ("Jay Gorter", "Kaleci", 74, "NL"),
+            ("Devyne Rensch", "Defans", 79, "NL"), ("Jorrel Hato", "Defans", 79, "NL"),
+            ("Ahmethan Kökcü", "Orta Saha", 78, "TR"), ("Steven Berghuis", "Forvet", 81, "NL"),
+            ("Davy Klaassen", "Orta Saha", 79, "NL"), ("Jordan Henderson", "Orta Saha", 82, "EN"),
+            ("Chuba Akpom", "Forvet", 79, "EN"), ("Sivert Mannsverk", "Orta Saha", 76, "NO"),
+            ("Benjamin Tahirovic", "Orta Saha", 76, "SE"), ("Branco van den Boomen", "Orta Saha", 78, "NL"),
+            ("Wout Weghorst", "Forvet", 81, "NL"), ("Bertrand Traoré", "Forvet", 78, "BF"),
+            ("Carlos Forbs", "Forvet", 76, "PT"),
+        ]
+    },
+    "PSV Eindhoven": {
+        "lig": "eredivisie", "forma": "#CC0000",
+        "oyuncular": [
+            ("Walter Benítez", "Kaleci", 83, "AR"), ("Joël Drommel", "Kaleci", 76, "NL"),
+            ("Jordan Teze", "Defans", 80, "NL"), ("Olivier Boscagli", "Defans", 81, "FR"),
+            ("Armando Obispo", "Defans", 79, "NL"), ("Philipp Mwene", "Defans", 76, "AT"),
+            ("Joey Veerman", "Orta Saha", 82, "NL"), ("Ibrahim Sangaré", "Orta Saha", 83, "CI"),
+            ("Xavi Simons", "Orta Saha", 83, "NL"), ("Hirving Lozano", "Forvet", 83, "MX"),
+            ("Cody Gakpo", "Forvet", 84, "NL"), ("Luuk de Jong", "Forvet", 80, "NL"),
+            ("Noa Lang", "Forvet", 81, "NL"), ("Ricardo Pepi", "Forvet", 79, "US"),
+        ]
+    },
+    # ── Primeira Liga ──
+    "Benfica": {
+        "lig": "primeira_liga", "forma": "#C41B17",
+        "oyuncular": [
+            ("Odysseas Vlachodimos", "Kaleci", 84, "GR"), ("Samuel Soares", "Kaleci", 72, "PT"),
+            ("Gilberto", "Defans", 79, "BR"), ("António Silva", "Defans", 82, "PT"),
+            ("Otamendi", "Defans", 84, "AR"), ("Grimaldo", "Defans", 83, "ES"),
+            ("Fredrik Aursnes", "Orta Saha", 80, "NO"), ("Florentino Luís", "Orta Saha", 79, "PT"),
+            ("Joăo Neves", "Orta Saha", 81, "PT"), ("Orkun Kökcü", "Orta Saha", 81, "TR"),
+            ("Ángel Di María", "Forvet", 85, "AR"), ("Rafa Silva", "Forvet", 82, "PT"),
+            ("Petar Musa", "Forvet", 80, "HR"), ("Arthur Cabral", "Forvet", 79, "BR"),
+            ("Marcos Leonardo", "Forvet", 78, "BR"),
+        ]
+    },
+    "FC Porto": {
+        "lig": "primeira_liga", "forma": "#003087",
+        "oyuncular": [
+            ("Diogo Costa", "Kaleci", 85, "PT"), ("Claudio Ramos", "Kaleci", 75, "PT"),
+            ("João Mário", "Defans", 78, "PT"), ("Chancel Mbemba", "Defans", 81, "CD"),
+            ("Pepe", "Defans", 82, "PT"), ("Zaidu Sanusi", "Defans", 79, "NG"),
+            ("Pepê", "Forvet", 80, "BR"), ("Otávio", "Orta Saha", 82, "PT"),
+            ("Evanilson", "Forvet", 81, "BR"), ("Mehdi Taremi", "Forvet", 83, "IR"),
+            ("Stephen Eustáquio", "Orta Saha", 80, "CA"), ("Wendell", "Defans", 78, "BR"),
+            ("Iván Marcano", "Defans", 77, "ES"), ("Galeno", "Forvet", 80, "BR"),
+            ("Toni Martínez", "Forvet", 78, "ES"),
+        ]
+    },
+    # ── MLS ──
+    "Inter Miami": {
+        "lig": "mls", "forma": "#F7B5CD",
+        "oyuncular": [
+            ("Drake Callender", "Kaleci", 76, "US"), ("Nick Marsman", "Kaleci", 74, "NL"),
+            ("DeAndre Yedlin", "Defans", 78, "US"), ("Sergio Busquets", "Orta Saha", 84, "ES"),
+            ("Jordi Alba", "Defans", 82, "ES"), ("Gerard Piqué", "Defans", 80, "ES"),
+            ("Lionel Messi", "Forvet", 94, "AR"), ("Gonzalo Higuain", "Forvet", 80, "AR"),
+            ("Benjamin Cremaschi", "Orta Saha", 73, "US"), ("Robert Taylor", "Forvet", 72, "FI"),
+            ("Leonardo Campana", "Forvet", 74, "EC"), ("Tomás Avilés", "Defans", 74, "AR"),
+            ("Facundo Farías", "Forvet", 76, "AR"), ("David Ruiz", "Orta Saha", 73, "MX"),
+            ("Luis Suárez", "Forvet", 83, "UY"), ("Riqui Puig", "Orta Saha", 79, "ES"),
+        ]
+    },
+    "LA Galaxy": {
+        "lig": "mls", "forma": "#00245D",
+        "oyuncular": [
+            ("John McCarthy", "Kaleci", 74, "US"), ("Jonathan Bond", "Kaleci", 73, "EN"),
+            ("John Nelson", "Defans", 72, "US"), ("Raheem Edwards", "Defans", 71, "CA"),
+            ("Emiro Garces", "Defans", 70, "CO"), ("Mark Delgado", "Orta Saha", 72, "US"),
+            ("Riqui Puig", "Orta Saha", 79, "ES"), ("Dejan Joveljić", "Forvet", 74, "RS"),
+            ("Gabriel Pec", "Forvet", 75, "BR"), ("Javier "Chicharito" Hernandez", "Forvet", 78, "MX"),
+            ("Julian Araujo", "Defans", 75, "US"), ("Kellyn Acosta", "Orta Saha", 74, "US"),
+            ("Marco Reus", "Orta Saha", 83, "DE"), ("Miki Yamane", "Defans", 73, "JP"),
+            ("Gastón Brugman", "Orta Saha", 72, "UY"),
+        ]
+    },
+    # ── Brasileirão ──
+    "Flamengo": {
+        "lig": "brasileiro", "forma": "#CC0000",
+        "oyuncular": [
+            ("Santos", "Kaleci", 80, "BR"), ("Agustín Rossi", "Kaleci", 79, "AR"),
+            ("Rodrigo Caio", "Defans", 79, "BR"), ("Léo Pereira", "Defans", 81, "BR"),
+            ("Filipe Luís", "Defans", 80, "BR"), ("Guillermo Varela", "Defans", 78, "UY"),
+            ("Gerson", "Orta Saha", 82, "BR"), ("Thiago Maia", "Orta Saha", 79, "BR"),
+            ("De Arrascaeta", "Orta Saha", 85, "UY"), ("Everton Ribeiro", "Orta Saha", 82, "BR"),
+            ("Gabriel Barbosa (Gabigol)", "Forvet", 85, "BR"), ("Pedro", "Forvet", 83, "BR"),
+            ("Michael", "Forvet", 79, "BR"), ("Everton Cebolinha", "Forvet", 80, "BR"),
+            ("Bruno Henrique", "Forvet", 80, "BR"), ("Vidal", "Orta Saha", 80, "CL"),
+        ]
+    },
+    "Palmeiras": {
+        "lig": "brasileiro", "forma": "#006437",
+        "oyuncular": [
+            ("Weverton", "Kaleci", 84, "BR"), ("Marcelo Lomba", "Kaleci", 77, "BR"),
+            ("Marcos Rocha", "Defans", 79, "BR"), ("Gustavo Gómez", "Defans", 83, "PY"),
+            ("Murilo", "Defans", 81, "BR"), ("Piquerez", "Defans", 80, "UY"),
+            ("Gabriel Menino", "Orta Saha", 80, "BR"), ("Danilo", "Orta Saha", 81, "BR"),
+            ("Zé Rafael", "Orta Saha", 80, "BR"), ("Raphael Veiga", "Orta Saha", 83, "BR"),
+            ("Endrick", "Forvet", 80, "BR"), ("Rony", "Forvet", 80, "BR"),
+            ("Dudu", "Forvet", 82, "BR"), ("Luis Guilherme", "Forvet", 78, "BR"),
+            ("Flaco López", "Forvet", 79, "AR"),
+        ]
+    },
+}
 
 TAKTIKLER = {
     "4-3-3":  (1.15, 0.90, "⚡ Agresif hücum"),
@@ -141,6 +468,19 @@ TAKTIKLER = {
     "5-3-2":  (0.88, 1.18, "🛡️ Güçlü defans"),
     "3-5-2":  (1.08, 1.05, "🎯 Orta saha hâkimiyeti"),
     "4-2-3-1":(1.05, 1.05, "🔄 Modern denge"),
+}
+
+BASARILAR = {
+    "ilk_mac":       ("⚽ İlk Adım",        "İlk maçını oynadın!"),
+    "5_galibiyet":   ("🏆 Çaylak Koç",      "5 galibiyet aldın!"),
+    "10_galibiyet":  ("🔥 Deneyimli Koç",   "10 galibiyet aldın!"),
+    "25_galibiyet":  ("👑 Efsane Koç",      "25 galibiyet aldın!"),
+    "golcu_10":      ("⚡ Golcü Kral",       "Bir oyuncun 10 gol attı!"),
+    "transfer_5":    ("🛒 Transfer Ustası",  "5 oyuncu transfer ettin!"),
+    "sezon_sampiyon":("🥇 Şampiyon",        "Sezonu şampiyon bitirdin!"),
+    "kupa_sampiyon": ("🏅 Kupa Şampiyonu",  "Kupayı kazandın!"),
+    "spin_5":        ("🎰 Şans Çarkı",      "Çarkı 5 kez çevirdin!"),
+    "altyapi":       ("🌱 Altyapı Yöneticisi","Altyapıdan ilk oyuncunu çıkardın!"),
 }
 
 SPIN_ODULLER = [
@@ -155,26 +495,22 @@ SPIN_ODULLER = [
     ("💎 50.000₺", "para",  50000, 2),
 ]
 
-BASARILAR = {
-    "ilk_mac":       ("⚽ İlk Adım",        "İlk maçını oynadın!"),
-    "5_galibiyet":   ("🏆 Çaylak Koç",      "5 galibiyet aldın!"),
-    "10_galibiyet":  ("🔥 Deneyimli Koç",   "10 galibiyet aldın!"),
-    "25_galibiyet":  ("👑 Efsane Koç",      "25 galibiyet aldın!"),
-    "golcu_10":      ("⚡ Golcü Kral",       "Bir oyuncun 10 gol attı!"),
-    "transfer_5":    ("🛒 Transfer Ustası",  "5 oyuncu transfer ettin!"),
-    "sezon_sampiyon":("🥇 Şampiyon",        "Sezonu şampiyon bitirdin!"),
-    "kupa_sampiyon": ("🏅 Kupa Şampiyonu",  "Cumhuriyet Kupası'nı kazandın!"),
-    "spin_5":        ("🎰 Şans Çarkı",      "Çarkı 5 kez çevirdin!"),
-    "bahis_kazan":   ("🎲 Bahisçi",         "İlk bahsini kazandın!"),
-    "altyapi":       ("🌱 Altyapı Yöneticisi","Altyapıdan ilk oyuncunu çıkardın!"),
-    "lig2_sampiyonu":("📈 Yükselen Yıldız", "2. lig şampiyonu oldun!"),
-}
+BASLANGIC_PARASI = 500_000
 
-
-# POZ_ULKE export (futbol.py'den import edilir)
 POZ_ULKE = {
     "TR": "🇹🇷", "BR": "🇧🇷", "ES": "🇪🇸", "FR": "🇫🇷", "DE": "🇩🇪",
-    "AR": "🇦🇷", "PT": "🇵🇹", "EN": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "IT": "🇮🇹", "NL": "🇳🇱", "NG": "🌍",
+    "AR": "🇦🇷", "PT": "🇵🇹", "EN": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "IT": "🇮🇹", "NL": "🇳🇱",
+    "BE": "🇧🇪", "CH": "🇨🇭", "HR": "🇭🇷", "UA": "🇺🇦", "NO": "🇳🇴",
+    "KR": "🇰🇷", "CM": "🇨🇲", "SC": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "HU": "🇭🇺", "DK": "🇩🇰",
+    "GH": "🇬🇭", "NG": "🇳🇬", "MA": "🇲🇦", "SN": "🇸🇳", "CO": "🇨🇴",
+    "EG": "🇪🇬", "UY": "🇺🇾", "AT": "🇦🇹", "CA": "🇨🇦", "JP": "🇯🇵",
+    "GE": "🇬🇪", "PL": "🇵🇱", "AM": "🇦🇲", "IR": "🇮🇷", "CL": "🇨🇱",
+    "SI": "🇸🇮", "SK": "🇸🇰", "AL": "🇦🇱", "KO": "🇽🇰", "BA": "🇧🇦",
+    "FI": "🇫🇮", "CZ": "🇨🇿", "EC": "🇪🇨", "RS": "🇷🇸", "CI": "🇨🇮",
+    "US": "🇺🇸", "MX": "🇲🇽", "CD": "🇨🇩", "CF": "🇨🇫", "BF": "🇧🇫",
+    "MZ": "🇲🇿", "GN": "🇬🇳", "PY": "🇵🇾", "MK": "🇲🇰", "ML": "🇲🇱",
+    "DZ": "🇩🇿", "GA": "🇬🇦", "GR": "🇬🇷", "WA": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "SE": "🇸🇪",
+    "IE": "🇮🇪", "EE": "🇪🇪", "RU": "🇷🇺", "MT": "🇲🇹", "CG": "🇨🇬",
 }
 
 
@@ -182,7 +518,7 @@ class FutbolDB:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._init_tables()
-        self._piyasa_doldur()
+        self._gercek_ligler_yukle()
 
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -194,15 +530,15 @@ class FutbolDB:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS futbol_para (
                     user_id INTEGER PRIMARY KEY,
-                    para    INTEGER DEFAULT 100000
+                    para    INTEGER DEFAULT 500000
                 )
             """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS takimlar (
                     takim_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id          INTEGER UNIQUE,
+                    user_id          INTEGER,
                     isim             TEXT UNIQUE,
-                    lig              INTEGER DEFAULT 1,
+                    lig_kodu         TEXT DEFAULT 'premier_league',
                     puan             INTEGER DEFAULT 0,
                     galibiyet        INTEGER DEFAULT 0,
                     beraberlik       INTEGER DEFAULT 0,
@@ -213,7 +549,8 @@ class FutbolDB:
                     son_mac          TEXT,
                     olusturma_tarihi TEXT,
                     taktik           TEXT DEFAULT '4-4-2',
-                    sezon            INTEGER DEFAULT 1
+                    sezon            INTEGER DEFAULT 1,
+                    bot_takim        INTEGER DEFAULT 0
                 )
             """)
             conn.execute("""
@@ -224,6 +561,7 @@ class FutbolDB:
                     pozisyon         TEXT,
                     guc              INTEGER,
                     deger            INTEGER,
+                    ulke             TEXT DEFAULT 'TR',
                     antrenman_tarihi TEXT,
                     satista          INTEGER DEFAULT 0,
                     satis_fiyati     INTEGER DEFAULT 0,
@@ -241,7 +579,7 @@ class FutbolDB:
                     ev_takim_id    INTEGER,
                     dep_takim_id   INTEGER,
                     hafta          INTEGER,
-                    lig            INTEGER DEFAULT 1,
+                    lig_kodu       TEXT DEFAULT 'premier_league',
                     oynanma_tarihi TEXT,
                     ev_gol         INTEGER,
                     dep_gol        INTEGER,
@@ -250,20 +588,18 @@ class FutbolDB:
                 )
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS lig_durumu (
+                    lig_kodu TEXT PRIMARY KEY,
+                    aktif    INTEGER DEFAULT 0,
+                    sezon    INTEGER DEFAULT 1,
+                    baslangic_tarihi TEXT
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS spin_kaydi (
                     user_id    INTEGER PRIMARY KEY,
                     son_spin   TEXT,
                     toplam     INTEGER DEFAULT 0
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS bahisler (
-                    bahis_id    INTEGER PRIMARY KEY AUTOINCREMENT,
-                    mac_id      INTEGER,
-                    user_id     INTEGER,
-                    hedef_takim INTEGER,
-                    miktar      INTEGER,
-                    odendi      INTEGER DEFAULT 0
                 )
             """)
             conn.execute("""
@@ -275,26 +611,75 @@ class FutbolDB:
                 )
             """)
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS kupa_maclar (
-                    mac_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tur            INTEGER,
-                    ev_takim_id    INTEGER,
-                    dep_takim_id   INTEGER,
-                    ev_gol         INTEGER DEFAULT 0,
-                    dep_gol        INTEGER DEFAULT 0,
-                    oynanmis       INTEGER DEFAULT 0,
-                    oynanma_tarihi TEXT,
-                    sezon          INTEGER DEFAULT 1
-                )
-            """)
-            conn.execute("""
                 CREATE TABLE IF NOT EXISTS grup_chatler (
                     chat_id INTEGER PRIMARY KEY
                 )
             """)
+            # ulke kolonu yoksa ekle
+            try:
+                conn.execute("ALTER TABLE oyuncular ADD COLUMN ulke TEXT DEFAULT 'TR'")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE oyuncular ADD COLUMN lig_kodu TEXT DEFAULT 'premier_league'")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE takimlar ADD COLUMN bot_takim INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE takimlar ADD COLUMN lig_kodu TEXT DEFAULT 'premier_league'")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE fikstur ADD COLUMN lig_kodu TEXT DEFAULT 'premier_league'")
+            except Exception:
+                pass
             conn.commit()
 
-    # ─── Para ──────────────────────────────────────────────────────────────
+    def _deger_hesapla(self, guc: int) -> int:
+        if guc >= 90:
+            return random.randint(5_000_000, 15_000_000)
+        elif guc >= 85:
+            return random.randint(2_000_000, 5_000_000)
+        elif guc >= 80:
+            return random.randint(800_000, 2_000_000)
+        elif guc >= 75:
+            return random.randint(300_000, 800_000)
+        elif guc >= 70:
+            return random.randint(100_000, 300_000)
+        else:
+            return random.randint(30_000, 100_000)
+
+    def _gercek_ligler_yukle(self):
+        """Her lig için gerçek takımları ve oyuncuları yükle (zaten varsa skip)"""
+        with self._conn() as conn:
+            for takim_adi, veri in GERCEK_TAKIMLAR.items():
+                lig_kodu = veri["lig"]
+                mevcut = conn.execute(
+                    "SELECT takim_id FROM takimlar WHERE isim=?", (takim_adi,)
+                ).fetchone()
+                if mevcut:
+                    continue
+                conn.execute("""
+                    INSERT INTO takimlar (isim, lig_kodu, bot_takim, olusturma_tarihi, taktik)
+                    VALUES (?, ?, 1, ?, '4-4-2')
+                """, (takim_adi, lig_kodu, date.today().isoformat()))
+                conn.commit()
+                takim_row = conn.execute(
+                    "SELECT takim_id FROM takimlar WHERE isim=?", (takim_adi,)
+                ).fetchone()
+                takim_id = takim_row["takim_id"]
+                for (isim, poz, guc, ulke) in veri["oyuncular"]:
+                    deger = self._deger_hesapla(guc)
+                    conn.execute("""
+                        INSERT INTO oyuncular (takim_id, isim, pozisyon, guc, deger, ulke, satista, satis_fiyati)
+                        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+                    """, (takim_id, isim, poz, guc, deger, ulke, deger))
+                conn.commit()
+
+    # ─── Para ────────────────────────────────────────────────────────────
 
     def para_getir(self, user_id: int) -> int:
         with self._conn() as conn:
@@ -311,364 +696,39 @@ class FutbolDB:
             conn.execute("UPDATE futbol_para SET para=para+? WHERE user_id=?", (miktar, user_id))
             conn.commit()
 
-    # ─── Takım ─────────────────────────────────────────────────────────────
+    # ─── Lig ─────────────────────────────────────────────────────────────
 
-    def takim_kur(self, user_id: int, isim: str):
-        isim = isim.strip()
-        if len(isim) < 2 or len(isim) > 30:
-            return False, "Takım adı 2-30 karakter olmalı.", 0
+    def lig_listesi(self) -> list:
         with self._conn() as conn:
-            lig1 = conn.execute("SELECT COUNT(*) FROM takimlar WHERE lig=1").fetchone()[0]
-            lig2 = conn.execute("SELECT COUNT(*) FROM takimlar WHERE lig=2").fetchone()[0]
-            if lig1 < LIG1_LIMIT:
-                lig = 1
-            elif lig2 < LIG2_LIMIT:
-                lig = 2
-            else:
-                return False, "Tüm lig kotaları dolu.", 0
-            try:
-                conn.execute("""
-                    INSERT INTO takimlar (user_id, isim, lig, olusturma_tarihi)
-                    VALUES (?,?,?,?)
-                """, (user_id, isim, lig, date.today().isoformat()))
-                conn.commit()
-            except sqlite3.IntegrityError as e:
-                if "user_id" in str(e):
-                    return False, "Zaten bir takımınız var.", 0
-                return False, "Bu takım adı zaten kullanılıyor.", 0
-
-            takim_row = conn.execute("SELECT takim_id FROM takimlar WHERE user_id=?", (user_id,)).fetchone()
-            takim_id = takim_row["takim_id"]
-            takim_sayisi = conn.execute("SELECT COUNT(*) FROM takimlar WHERE lig=?", (lig,)).fetchone()[0]
-
-        # Otomatik başlangıç kadrosu oluştur
-        self._otomatik_kadro_olustur(takim_id)
-        return True, lig, takim_sayisi
-
-    def _otomatik_kadro_olustur(self, takim_id: int):
-        """Takım kurulunca 16 oyuncudan oluşan otomatik kadro ata"""
-        kullanilmis = set()
-        with self._conn() as conn:
-            kullanilmis = {r[0] for r in conn.execute("SELECT isim FROM oyuncular").fetchall()}
-
-        oyuncu_listesi = []
-        havuz = list(TUM_OYUNCULAR)
-        random.shuffle(havuz)
-        havuz_idx = 0
-
-        for (poz, adet, guc_aralik) in BASLANGIC_KADRO:
-            for _ in range(adet):
-                # Havuzdan uygun güçte oyuncu bul
-                bulunan = False
-                for attempt in range(len(havuz)):
-                    idx = (havuz_idx + attempt) % len(havuz)
-                    isim, baz_guc, ulke = havuz[idx]
-                    if isim in kullanilmis:
-                        continue
-                    guc_min, guc_max = guc_aralik
-                    guc = max(guc_min, min(guc_max, baz_guc + random.randint(-3, 5)))
-                    if guc_min <= guc <= guc_max + 5:
-                        kullanilmis.add(isim)
-                        havuz_idx = (idx + 1) % len(havuz)
-                        deger = _deger_hesapla(guc)
-                        oyuncu_listesi.append((takim_id, isim, poz, guc, deger))
-                        bulunan = True
-                        break
-                if not bulunan:
-                    # Fallback: rastgele isim + guc_aralik ortası
-                    guc_min, guc_max = guc_aralik
-                    isim = rastgele_isim(kullanilmis)
-                    kullanilmis.add(isim)
-                    guc = random.randint(guc_min, guc_max)
-                    deger = _deger_hesapla(guc)
-                    oyuncu_listesi.append((takim_id, isim, poz, guc, deger))
-
-        with self._conn() as conn:
-            for tid, isim, poz, guc, deger in oyuncu_listesi:
-                conn.execute("""
-                    INSERT INTO oyuncular (takim_id,isim,pozisyon,guc,deger,satista,satis_fiyati)
-                    VALUES (?,?,?,?,?,0,?)
-                """, (tid, isim, poz, guc, deger, deger))
-            conn.commit()
-
-    def takim_user(self, user_id: int) -> Optional[dict]:
-        with self._conn() as conn:
-            r = conn.execute("SELECT * FROM takimlar WHERE user_id=?", (user_id,)).fetchone()
-            return dict(r) if r else None
-
-    def takim_id(self, takim_id: int) -> Optional[dict]:
-        with self._conn() as conn:
-            r = conn.execute("SELECT * FROM takimlar WHERE takim_id=?", (takim_id,)).fetchone()
-            return dict(r) if r else None
-
-    def takim_sayisi(self, lig: int = 1) -> int:
-        with self._conn() as conn:
-            return conn.execute("SELECT COUNT(*) FROM takimlar WHERE lig=?", (lig,)).fetchone()[0]
-
-    def tum_takimlar(self, lig: int = 1) -> list:
-        with self._conn() as conn:
-            rows = conn.execute("""
-                SELECT * FROM takimlar WHERE lig=?
-                ORDER BY puan DESC, (atilan_gol-yenilen_gol) DESC, atilan_gol DESC
-            """, (lig,)).fetchall()
+            rows = conn.execute("SELECT * FROM lig_durumu ORDER BY lig_kodu").fetchall()
             return [dict(r) for r in rows]
 
-    def taktik_sec(self, takim_id: int, taktik: str) -> bool:
-        if taktik not in TAKTIKLER:
-            return False
+    def lig_aktif_mi(self, lig_kodu: str) -> bool:
         with self._conn() as conn:
-            conn.execute("UPDATE takimlar SET taktik=? WHERE takim_id=?", (taktik, takim_id))
-            conn.commit()
-        return True
+            r = conn.execute("SELECT aktif FROM lig_durumu WHERE lig_kodu=?", (lig_kodu,)).fetchone()
+            return bool(r and r["aktif"])
 
-    # ─── Oyuncular ─────────────────────────────────────────────────────────
-
-    def _piyasa_doldur(self):
+    def lig_baslat(self, lig_kodu: str) -> tuple:
+        """Admin bir ligi başlatır — fikstür oluşturulur, otomatik maçlar planlanır"""
+        if lig_kodu not in LIGLER:
+            return False, "Geçersiz lig kodu."
+        if self.lig_aktif_mi(lig_kodu):
+            return False, f"{LIGLER[lig_kodu]['ad']} zaten aktif!"
         with self._conn() as conn:
-            mevcut = conn.execute(
-                "SELECT COUNT(*) FROM oyuncular WHERE takim_id IS NULL AND satista=1"
-            ).fetchone()[0]
-            if mevcut >= 30:
-                return
-            kullanilmis = {r[0] for r in conn.execute("SELECT isim FROM oyuncular").fetchall()}
-            havuz = list(TUM_OYUNCULAR)
-            random.shuffle(havuz)
-            eklenen = 0
-            for isim, baz_guc, ulke in havuz:
-                if eklenen >= (40 - mevcut):
-                    break
-                if isim in kullanilmis:
-                    continue
-                kullanilmis.add(isim)
-                poz = random.choice(POZISYONLAR_AGIRLIKLI)
-                guc = max(40, min(90, baz_guc + random.randint(-5, 8)))
-                deger = _deger_hesapla(guc)
-                conn.execute("""
-                    INSERT INTO oyuncular (takim_id,isim,pozisyon,guc,deger,satista,satis_fiyati)
-                    VALUES (NULL,?,?,?,?,1,?)
-                """, (isim, poz, guc, deger, deger))
-                eklenen += 1
-            conn.commit()
-
-    def altyapi_cikart(self, takim_id: int, user_id: int):
-        """Altyapıdan genç oyuncu çıkar — ücretsiz ama düşük güçlü"""
-        with self._conn() as conn:
-            kadro = conn.execute(
-                "SELECT COUNT(*) FROM oyuncular WHERE takim_id=?", (takim_id,)
-            ).fetchone()[0]
-            if kadro >= 23:
-                return None, "Kadron dolu (maks. 23)."
-            kullanilmis = {r[0] for r in conn.execute("SELECT isim FROM oyuncular").fetchall()}
-            isim = rastgele_isim(kullanilmis)
-            poz = random.choice(POZISYONLAR_AGIRLIKLI)
-            guc = random.randint(30, 52)
-            deger = _deger_hesapla(guc)
             conn.execute("""
-                INSERT INTO oyuncular (takim_id,isim,pozisyon,guc,deger,satista,satis_fiyati,genc)
-                VALUES (?,?,?,?,?,0,?,1)
-            """, (takim_id, isim, poz, guc, deger, deger))
+                INSERT OR REPLACE INTO lig_durumu (lig_kodu, aktif, sezon, baslangic_tarihi)
+                VALUES (?, 1, 1, ?)
+            """, (lig_kodu, date.today().isoformat()))
             conn.commit()
-            r = conn.execute(
-                "SELECT * FROM oyuncular WHERE takim_id=? ORDER BY oyuncu_id DESC LIMIT 1",
-                (takim_id,)
-            ).fetchone()
-        self.basari_ver(user_id, "altyapi")
-        return dict(r), None
+        ok = self._fikstur_olustur_lig(lig_kodu)
+        if ok:
+            lig_adi = LIGLER[lig_kodu]["ad"]
+            takim_sayisi = len([t for t in GERCEK_TAKIMLAR.values() if t["lig"] == lig_kodu])
+            return True, f"✅ {lig_adi} başlatıldı! {takim_sayisi} takım, fikstür hazır."
+        return False, "Fikstür oluşturulamadı."
 
-    def takim_oyunculari(self, takim_id: int) -> list:
-        with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM oyuncular WHERE takim_id=? ORDER BY guc DESC", (takim_id,)
-            ).fetchall()
-            return [dict(r) for r in rows]
-
-    def piyasa(self, sayfa: int = 0, sayfa_boyut: int = 8) -> tuple:
-        offset = sayfa * sayfa_boyut
-        with self._conn() as conn:
-            toplam = conn.execute(
-                "SELECT COUNT(*) FROM oyuncular WHERE satista=1"
-            ).fetchone()[0]
-            rows = conn.execute("""
-                SELECT * FROM oyuncular WHERE satista=1
-                ORDER BY guc DESC LIMIT ? OFFSET ?
-            """, (sayfa_boyut, offset)).fetchall()
-            return [dict(r) for r in rows], toplam
-
-    def oyuncu_getir(self, oyuncu_id: int) -> Optional[dict]:
-        with self._conn() as conn:
-            r = conn.execute("SELECT * FROM oyuncular WHERE oyuncu_id=?", (oyuncu_id,)).fetchone()
-            return dict(r) if r else None
-
-    def satin_al(self, user_id: int, takim_id: int, oyuncu_id: int):
-        oyuncu = self.oyuncu_getir(oyuncu_id)
-        if not oyuncu or not oyuncu["satista"]:
-            return False, "Oyuncu satışta değil."
-        fiyat = oyuncu["satis_fiyati"]
-        para = self.para_getir(user_id)
-        if para < fiyat:
-            return False, f"Yeterli paran yok. Gerekli: {fiyat:,}₺ | Mevcut: {para:,}₺"
-        kadro = self.takim_oyunculari(takim_id)
-        if len(kadro) >= 23:
-            return False, "Kadron dolu (maks. 23 oyuncu)."
-        self.para_guncelle(user_id, -fiyat)
-        if oyuncu["takim_id"]:
-            with self._conn() as conn:
-                satici = conn.execute(
-                    "SELECT user_id FROM takimlar WHERE takim_id=?", (oyuncu["takim_id"],)
-                ).fetchone()
-                if satici:
-                    self.para_guncelle(satici["user_id"], fiyat)
-        with self._conn() as conn:
-            conn.execute(
-                "UPDATE oyuncular SET takim_id=?,satista=0,satis_fiyati=0 WHERE oyuncu_id=?",
-                (takim_id, oyuncu_id)
-            )
-            conn.commit()
-        self._piyasa_doldur()
-        # Transfer başarısı kontrolü
-        with self._conn() as conn:
-            adet = conn.execute(
-                "SELECT COUNT(*) FROM oyuncular WHERE takim_id=?", (takim_id,)
-            ).fetchone()[0]
-        if adet >= 5:
-            self.basari_ver(user_id, "transfer_5")
-        # Satıcının user_id'sini döndür (bildirim için)
-        satici_uid = None
-        if oyuncu.get("takim_id"):
-            with self._conn() as conn:
-                row = conn.execute(
-                    "SELECT user_id FROM takimlar WHERE takim_id=?", (oyuncu["takim_id"],)
-                ).fetchone()
-                if row:
-                    satici_uid = row["user_id"]
-        return True, f"✅ *{oyuncu['isim']}* ({oyuncu['pozisyon']}, Güç:{oyuncu['guc']}) satın alındı! -{fiyat:,}₺", satici_uid
-
-    def sat(self, takim_id: int, oyuncu_id: int, fiyat: int):
-        oyuncu = self.oyuncu_getir(oyuncu_id)
-        if not oyuncu or oyuncu["takim_id"] != takim_id:
-            return False, "Bu oyuncu senin takımında değil."
-        if oyuncu["satista"]:
-            return False, "Oyuncu zaten satışta."
-        if fiyat < 1_000:
-            return False, "Minimum satış fiyatı 1.000₺."
-        with self._conn() as conn:
-            conn.execute(
-                "UPDATE oyuncular SET satista=1,satis_fiyati=? WHERE oyuncu_id=?",
-                (fiyat, oyuncu_id)
-            )
-            conn.commit()
-        return True, f"✅ *{oyuncu['isim']}* {fiyat:,}₺ ile piyasaya çıkarıldı."
-
-    def sat_iptal(self, takim_id: int, oyuncu_id: int):
-        oyuncu = self.oyuncu_getir(oyuncu_id)
-        if not oyuncu or oyuncu["takim_id"] != takim_id:
-            return False, "Bu oyuncu senin takımında değil."
-        with self._conn() as conn:
-            conn.execute(
-                "UPDATE oyuncular SET satista=0,satis_fiyati=0 WHERE oyuncu_id=?",
-                (oyuncu_id,)
-            )
-            conn.commit()
-        return True, "✅ Satış iptal edildi."
-
-    def oyuncu_istatistikleri(self, takim_id: int) -> list:
-        with self._conn() as conn:
-            rows = conn.execute("""
-                SELECT * FROM oyuncular WHERE takim_id=?
-                ORDER BY gol DESC, asist DESC
-            """, (takim_id,)).fetchall()
-            return [dict(r) for r in rows]
-
-    def sezon_golculeri(self) -> list:
-        with self._conn() as conn:
-            rows = conn.execute("""
-                SELECT o.isim, o.gol, o.asist, t.isim as takim_isim, t.lig
-                FROM oyuncular o
-                JOIN takimlar t ON o.takim_id = t.takim_id
-                WHERE o.gol > 0
-                ORDER BY o.gol DESC, o.asist DESC
-                LIMIT 10
-            """).fetchall()
-            return [dict(r) for r in rows]
-
-    def sakatlanan_oyuncular(self, takim_id: int) -> list:
-        bugun = date.today().isoformat()
-        with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM oyuncular WHERE takim_id=? AND sakatlik_bitis > ?",
-                (takim_id, bugun)
-            ).fetchall()
-            return [dict(r) for r in rows]
-
-    # ─── Antrenman ─────────────────────────────────────────────────────────
-
-    def antrenman_yap(self, takim_id: int):
-        bugun = date.today().isoformat()
-        oyuncular = self.takim_oyunculari(takim_id)
-        if not oyuncular:
-            return False, "Kadronuzda oyuncu yok."
-        if any(o["antrenman_tarihi"] == bugun for o in oyuncular):
-            return False, "Bugün zaten antrenman yaptınız. Yarın tekrar gelin! ⏰"
-        secilen = random.sample(oyuncular, min(5, len(oyuncular)))
-        gelismeler = []
-        with self._conn() as conn:
-            for o in secilen:
-                artis = random.randint(1, 3)
-                if o.get("genc"):
-                    artis += random.randint(1, 2)  # gençler daha hızlı gelişir
-                yeni_guc = min(99, o["guc"] + artis)
-                yeni_deger = max(8_000, yeni_guc * 1_000 + random.randint(0, 3_000))
-                conn.execute("""
-                    UPDATE oyuncular SET guc=?,deger=?,antrenman_tarihi=? WHERE oyuncu_id=?
-                """, (yeni_guc, yeni_deger, bugun, o["oyuncu_id"]))
-                gelismeler.append({
-                    "isim": o["isim"],
-                    "pozisyon": o["pozisyon"],
-                    "artis": artis,
-                    "yeni_guc": yeni_guc,
-                    "genc": bool(o.get("genc")),
-                })
-            conn.commit()
-        return True, gelismeler
-
-    # ─── Takım gücü ─────────────────────────────────────────────────────────
-
-    def takim_gucu(self, takim_id: int, taktik: str = "4-4-2") -> float:
-        oyuncular = self.takim_oyunculari(takim_id)
-        if not oyuncular:
-            return 50.0
-        bugun = date.today().isoformat()
-        aktif = [o for o in oyuncular
-                 if not o.get("sakatlik_bitis") or o["sakatlik_bitis"] <= bugun]
-        if not aktif:
-            aktif = oyuncular
-        gucler = sorted([o["guc"] for o in aktif], reverse=True)
-        en_iyi = gucler[:11]
-        taban = sum(en_iyi) / len(en_iyi)
-        h, d, _ = TAKTIKLER.get(taktik, (1.0, 1.0, ""))
-        return taban * ((h + d) / 2)
-
-    def yeterli_kadro_mu(self, takim_id: int) -> tuple:
-        oyuncular = self.takim_oyunculari(takim_id)
-        bugun = date.today().isoformat()
-        aktif = [o for o in oyuncular
-                 if not o.get("sakatlik_bitis") or o["sakatlik_bitis"] <= bugun]
-        if len(aktif) < 11:
-            return False, f"Sağlıklı oyuncu: {len(aktif)} (min. 11 gerekli)."
-        if not any(o["pozisyon"] == "Kaleci" for o in aktif):
-            return False, "Sağlıklı Kaleci yok!"
-        return True, "ok"
-
-    # ─── Fikstür ───────────────────────────────────────────────────────────
-
-    def fikstur_var_mi(self, lig: int = 1) -> bool:
-        with self._conn() as conn:
-            return conn.execute(
-                "SELECT COUNT(*) FROM fikstur WHERE lig=?", (lig,)
-            ).fetchone()[0] > 0
-
-    def fikstur_olustur(self, lig: int = 1, sezon: int = 1):
-        takimlar = self.tum_takimlar(lig)
+    def _fikstur_olustur_lig(self, lig_kodu: str, sezon: int = 1) -> bool:
+        takimlar = self.lig_takimlari(lig_kodu)
         if len(takimlar) < 2:
             return False
         ids = [t["takim_id"] for t in takimlar]
@@ -690,62 +750,136 @@ class FutbolDB:
         for ev, dep, hafta in list(tum_maclar):
             tum_maclar.append((dep, ev, hafta + toplam))
         with self._conn() as conn:
-            conn.execute("DELETE FROM fikstur WHERE lig=? AND sezon=?", (lig, sezon))
+            conn.execute("DELETE FROM fikstur WHERE lig_kodu=? AND sezon=?", (lig_kodu, sezon))
             for ev, dep, hafta in tum_maclar:
                 conn.execute("""
-                    INSERT INTO fikstur (ev_takim_id,dep_takim_id,hafta,lig,oynanmis,sezon)
-                    VALUES (?,?,?,?,0,?)
-                """, (ev, dep, hafta, lig, sezon))
+                    INSERT INTO fikstur (ev_takim_id, dep_takim_id, hafta, lig_kodu, oynanmis, sezon)
+                    VALUES (?, ?, ?, ?, 0, ?)
+                """, (ev, dep, hafta, lig_kodu, sezon))
             conn.commit()
         return True
 
-    def fikstur_takim_ekle(self, yeni_takim_id: int, lig: int = 1, sezon: int = 1):
-        """Yeni takım gelince mevcut fikstüre maçlar ekle, puanlar sıfırlanmaz"""
-        takimlar = self.tum_takimlar(lig)
-        diger_ids = [t["takim_id"] for t in takimlar if t["takim_id"] != yeni_takim_id]
-        if not diger_ids:
-            return
+    def lig_takimlari(self, lig_kodu: str) -> list:
         with self._conn() as conn:
-            max_hafta = conn.execute(
-                "SELECT COALESCE(MAX(hafta),0) FROM fikstur WHERE lig=?", (lig,)
-            ).fetchone()[0]
-        yeni_maclar = []
-        for i, eski in enumerate(diger_ids):
-            h1 = max_hafta + i * 2 + 1
-            h2 = max_hafta + i * 2 + 2
-            yeni_maclar.append((yeni_takim_id, eski, h1, lig, sezon))
-            yeni_maclar.append((eski, yeni_takim_id, h2, lig, sezon))
-        with self._conn() as conn:
-            for ev, dep, h, l, s in yeni_maclar:
-                conn.execute("""
-                    INSERT INTO fikstur (ev_takim_id,dep_takim_id,hafta,lig,oynanmis,sezon)
-                    VALUES (?,?,?,?,0,?)
-                """, (ev, dep, h, l, s))
-            conn.commit()
+            rows = conn.execute(
+                "SELECT * FROM takimlar WHERE lig_kodu=? ORDER BY puan DESC, (atilan_gol-yenilen_gol) DESC",
+                (lig_kodu,)
+            ).fetchall()
+            return [dict(r) for r in rows]
 
-    def sonraki_mac(self, takim_id: int) -> Optional[dict]:
-        takim = self.takim_id(takim_id)
-        if not takim:
-            return None
-        lig = takim["lig"]
+    def tum_aktif_ligler(self) -> list:
         with self._conn() as conn:
-            r = conn.execute("""
-                SELECT * FROM fikstur
-                WHERE (ev_takim_id=? OR dep_takim_id=?) AND oynanmis=0 AND lig=?
-                ORDER BY hafta ASC LIMIT 1
-            """, (takim_id, takim_id, lig)).fetchone()
+            rows = conn.execute("SELECT lig_kodu FROM lig_durumu WHERE aktif=1").fetchall()
+            return [r["lig_kodu"] for r in rows]
+
+    # ─── Takım ───────────────────────────────────────────────────────────
+
+    def takim_user(self, user_id: int) -> Optional[dict]:
+        with self._conn() as conn:
+            r = conn.execute("SELECT * FROM takimlar WHERE user_id=?", (user_id,)).fetchone()
             return dict(r) if r else None
 
-    def bugun_mac_oynadim_mi(self, takim_id: int) -> bool:
+    def takim_id(self, takim_id: int) -> Optional[dict]:
+        with self._conn() as conn:
+            r = conn.execute("SELECT * FROM takimlar WHERE takim_id=?", (takim_id,)).fetchone()
+            return dict(r) if r else None
+
+    def kullanici_takim_sec(self, user_id: int, takim_adi: str) -> tuple:
+        """Kullanıcı mevcut bir gerçek takımı sahiplenebilir"""
+        mevcut = self.takim_user(user_id)
+        if mevcut:
+            return False, f"Zaten '{mevcut['isim']}' takımına sahipsin."
+        with self._conn() as conn:
+            t = conn.execute(
+                "SELECT * FROM takimlar WHERE isim=? AND (user_id IS NULL OR user_id=0)",
+                (takim_adi,)
+            ).fetchone()
+            if not t:
+                return False, "Bu takım bulunamadı veya zaten sahip var."
+            conn.execute("UPDATE takimlar SET user_id=? WHERE takim_id=?", (user_id, t["takim_id"]))
+            conn.commit()
+        if not self.para_getir(user_id):
+            self.para_guncelle(user_id, 0)
+        return True, dict(t)
+
+    def takim_oyunculari(self, takim_id: int) -> list:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM oyuncular WHERE takim_id=? ORDER BY guc DESC",
+                (takim_id,)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def takim_gucu(self, takim_id: int, taktik: str = "4-4-2") -> float:
+        oyuncular = self.takim_oyunculari(takim_id)
+        if not oyuncular:
+            return 50.0
+        bugun = date.today().isoformat()
+        aktif = [o for o in oyuncular
+                 if not o.get("sakatlik_bitis") or o["sakatlik_bitis"] <= bugun]
+        if not aktif:
+            aktif = oyuncular
+        gucler = sorted([o["guc"] for o in aktif], reverse=True)
+        en_iyi = gucler[:11]
+        taban = sum(en_iyi) / len(en_iyi)
+        h, d, _ = TAKTIKLER.get(taktik, (1.0, 1.0, ""))
+        return taban * ((h + d) / 2)
+
+    def taktik_sec(self, takim_id: int, taktik: str) -> bool:
+        if taktik not in TAKTIKLER:
+            return False
+        with self._conn() as conn:
+            conn.execute("UPDATE takimlar SET taktik=? WHERE takim_id=?", (taktik, takim_id))
+            conn.commit()
+        return True
+
+    def sakatlanan_oyuncular(self, takim_id: int) -> list:
         bugun = date.today().isoformat()
         with self._conn() as conn:
-            r = conn.execute("""
-                SELECT COUNT(*) FROM fikstur
-                WHERE (ev_takim_id=? OR dep_takim_id=?) AND oynanmis=1 AND oynanma_tarihi=?
-            """, (takim_id, takim_id, bugun)).fetchone()
-            return r[0] > 0
+            rows = conn.execute(
+                "SELECT * FROM oyuncular WHERE takim_id=? AND sakatlik_bitis > ?",
+                (takim_id, bugun)
+            ).fetchall()
+            return [dict(r) for r in rows]
 
-    def mac_oyna(self, mac_id: int, talep_eden_takim: int):
+    # ─── Otomatik Maç Sistemi ─────────────────────────────────────────────
+
+    def oynanacak_maclar(self, lig_kodu: str) -> list:
+        """Ligdeki oynanmamış maçları döndür"""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM fikstur WHERE lig_kodu=? AND oynanmis=0 ORDER BY hafta ASC",
+                (lig_kodu,)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def bu_haftanin_maclari(self, lig_kodu: str) -> list:
+        """Bu haftanın oynanmamış maçları"""
+        with self._conn() as conn:
+            min_hafta = conn.execute(
+                "SELECT MIN(hafta) FROM fikstur WHERE lig_kodu=? AND oynanmis=0",
+                (lig_kodu,)
+            ).fetchone()[0]
+            if not min_hafta:
+                return []
+            rows = conn.execute(
+                "SELECT * FROM fikstur WHERE lig_kodu=? AND hafta=? AND oynanmis=0",
+                (lig_kodu, min_hafta)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def hafta_oyna(self, lig_kodu: str) -> list:
+        """Bir haftanın tüm maçlarını otomatik oyna, sonuçları döndür"""
+        maclar = self.bu_haftanin_maclari(lig_kodu)
+        sonuclar = []
+        for mac in maclar:
+            sonuc, hata = self._mac_simule_et(mac["mac_id"])
+            if sonuc:
+                sonuclar.append(sonuc)
+        return sonuclar
+
+    def _mac_simule_et(self, mac_id: int):
+        """Tek bir maçı simüle eder (bot vs bot dahil)"""
         with self._conn() as conn:
             r = conn.execute("SELECT * FROM fikstur WHERE mac_id=?", (mac_id,)).fetchone()
             if not r:
@@ -753,14 +887,21 @@ class FutbolDB:
             mac = dict(r)
         if mac["oynanmis"]:
             return None, "Bu maç zaten oynandı."
-        if talep_eden_takim not in (mac["ev_takim_id"], mac["dep_takim_id"]):
-            return None, "Bu maç senin takımına ait değil."
-        if self.bugun_mac_oynadim_mi(talep_eden_takim):
-            return None, "Bugün zaten bir maç oynadın. Yarın geri gel! ⚽"
+
         ev_t = self.takim_id(mac["ev_takim_id"])
         dep_t = self.takim_id(mac["dep_takim_id"])
+        if not ev_t or not dep_t:
+            return None, "Takım bulunamadı."
+
         ev_taktik = ev_t.get("taktik", "4-4-2")
         dep_taktik = dep_t.get("taktik", "4-4-2")
+
+        # Bot takımlar için rastgele taktik
+        if ev_t.get("bot_takim"):
+            ev_taktik = random.choice(list(TAKTIKLER.keys()))
+        if dep_t.get("bot_takim"):
+            dep_taktik = random.choice(list(TAKTIKLER.keys()))
+
         ev_h, ev_d, _ = TAKTIKLER.get(ev_taktik, (1.0, 1.0, ""))
         dep_h, dep_d, _ = TAKTIKLER.get(dep_taktik, (1.0, 1.0, ""))
         ev_guc_ham = self.takim_gucu(mac["ev_takim_id"], ev_taktik)
@@ -771,6 +912,7 @@ class FutbolDB:
         ev_oran = ev_guc_adj / toplam if toplam else 0.5
         ev_gol = max(0, min(9, round(random.gauss(ev_oran * 3.2, 1.1))))
         dep_gol = max(0, min(9, round(random.gauss((1 - ev_oran) * 3.2, 1.1))))
+
         ev_oyuncular = self.takim_oyunculari(mac["ev_takim_id"])
         dep_oyuncular = self.takim_oyunculari(mac["dep_takim_id"])
         olaylar = []
@@ -796,22 +938,18 @@ class FutbolDB:
         ev_gol_atanlar = gol_atan(ev_oyuncular, ev_gol)
         dep_gol_atanlar = gol_atan(dep_oyuncular, dep_gol)
 
-        # Kart ve sakatlık olayları
         tum = [(o, "ev") for o in ev_oyuncular] + [(o, "dep") for o in dep_oyuncular]
         with self._conn() as c:
             for o, _t in tum:
-                if random.random() < 0.18:
+                if random.random() < 0.15:
                     yeni_sari = (o.get("sari_kart") or 0) + 1
                     c.execute("UPDATE oyuncular SET sari_kart=? WHERE oyuncu_id=?", (yeni_sari, o["oyuncu_id"]))
                     olaylar.append(f"🟡 {o['isim']} sarı kart")
-                    if yeni_sari >= 2 and random.random() < 0.4:
-                        c.execute("UPDATE oyuncular SET kirmizi_kart=kirmizi_kart+1,sari_kart=0 WHERE oyuncu_id=?", (o["oyuncu_id"],))
-                        olaylar.append(f"🔴 {o['isim']} çift sarıdan kırmızı!")
-                elif random.random() < 0.04:
+                elif random.random() < 0.03:
                     c.execute("UPDATE oyuncular SET kirmizi_kart=kirmizi_kart+1 WHERE oyuncu_id=?", (o["oyuncu_id"],))
                     olaylar.append(f"🔴 {o['isim']} direkt kırmızı!")
-                if random.random() < 0.07:
-                    gun = random.randint(2, 8)
+                if random.random() < 0.05:
+                    gun = random.randint(2, 6)
                     bitis = (date.today() + timedelta(days=gun)).isoformat()
                     c.execute("UPDATE oyuncular SET sakatlik_bitis=? WHERE oyuncu_id=?", (bitis, o["oyuncu_id"]))
                     olaylar.append(f"🏥 {o['isim']} sakatlandı ({gun}g)")
@@ -846,40 +984,32 @@ class FutbolDB:
             upd(mac["dep_takim_id"], dep_gol, ev_gol)
             conn.commit()
 
-        if ev_gol > dep_gol:
-            self.para_guncelle(ev_t["user_id"], 5_000)
-            self.para_guncelle(dep_t["user_id"], 1_000)
-            kazanan_user, kaybeden_user = ev_t["user_id"], dep_t["user_id"]
-            kazandi_ev = True
-        elif dep_gol > ev_gol:
-            self.para_guncelle(dep_t["user_id"], 5_000)
-            self.para_guncelle(ev_t["user_id"], 1_000)
-            kazanan_user, kaybeden_user = dep_t["user_id"], ev_t["user_id"]
-            kazandi_ev = False
-        else:
-            self.para_guncelle(ev_t["user_id"], 2_500)
-            self.para_guncelle(dep_t["user_id"], 2_500)
-            kazanan_user = None
-            kazandi_ev = None
+        # Para ödülleri kullanıcı takımlarına
+        for t_obj, a_gol, y_gol in [(ev_t, ev_gol, dep_gol), (dep_t, dep_gol, ev_gol)]:
+            uid = t_obj.get("user_id")
+            if uid and not t_obj.get("bot_takim"):
+                if a_gol > y_gol:
+                    self.para_guncelle(uid, 8_000)
+                    self._mac_basari_kontrol(uid, True)
+                elif a_gol == y_gol:
+                    self.para_guncelle(uid, 3_000)
+                    self._mac_basari_kontrol(uid, False)
+                else:
+                    self.para_guncelle(uid, 1_000)
+                    self._mac_basari_kontrol(uid, False)
 
-        self._mac_basari_kontrol(ev_t["user_id"], ev_gol > dep_gol)
-        self._mac_basari_kontrol(dep_t["user_id"], dep_gol > ev_gol)
         self._golcu_basari_kontrol()
-
-        kazanan_takim_id = mac["ev_takim_id"] if ev_gol > dep_gol else (
-            mac["dep_takim_id"] if dep_gol > ev_gol else None)
-        self._bahis_ode(mac_id, kazanan_takim_id)
 
         return {
             "mac_id": mac_id,
             "hafta": mac["hafta"],
-            "lig": mac["lig"],
+            "lig_kodu": mac["lig_kodu"],
             "ev_takim": ev_t["isim"],
             "dep_takim": dep_t["isim"],
             "ev_takim_id": mac["ev_takim_id"],
             "dep_takim_id": mac["dep_takim_id"],
-            "ev_takim_user": ev_t["user_id"],
-            "dep_takim_user": dep_t["user_id"],
+            "ev_takim_user": ev_t.get("user_id"),
+            "dep_takim_user": dep_t.get("user_id"),
             "ev_gol": ev_gol,
             "dep_gol": dep_gol,
             "ev_gol_atanlar": ev_gol_atanlar,
@@ -888,32 +1018,166 @@ class FutbolDB:
             "dep_guc": round(dep_guc_ham, 1),
             "ev_taktik": ev_taktik,
             "dep_taktik": dep_taktik,
-            "olaylar": olaylar[:6],
+            "olaylar": olaylar[:8],
         }, None
 
-    def _mac_basari_kontrol(self, user_id: int, kazandi: bool):
-        self.basari_ver(user_id, "ilk_mac")
-        if not kazandi:
-            return
-        takim = self.takim_user(user_id)
-        if not takim:
-            return
-        g = takim["galibiyet"]
-        for esik, kod in [(5, "5_galibiyet"), (10, "10_galibiyet"), (25, "25_galibiyet")]:
-            if g >= esik:
-                self.basari_ver(user_id, kod)
+    # ─── Piyasa ──────────────────────────────────────────────────────────
 
-    def _golcu_basari_kontrol(self):
+    def piyasa(self, sayfa: int = 0, sayfa_boyut: int = 8):
+        with self._conn() as conn:
+            toplam = conn.execute(
+                "SELECT COUNT(*) FROM oyuncular WHERE satista=1"
+            ).fetchone()[0]
+            rows = conn.execute(
+                "SELECT * FROM oyuncular WHERE satista=1 ORDER BY guc DESC LIMIT ? OFFSET ?",
+                (sayfa_boyut, sayfa * sayfa_boyut)
+            ).fetchall()
+            return [dict(r) for r in rows], toplam
+
+    def oyuncu_getir(self, oyuncu_id: int) -> Optional[dict]:
+        with self._conn() as conn:
+            r = conn.execute("SELECT * FROM oyuncular WHERE oyuncu_id=?", (oyuncu_id,)).fetchone()
+            return dict(r) if r else None
+
+    def satin_al(self, user_id: int, takim_id: int, oyuncu_id: int):
+        oyuncu = self.oyuncu_getir(oyuncu_id)
+        if not oyuncu:
+            return False, "❌ Oyuncu bulunamadı.", None
+        if not oyuncu["satista"]:
+            return False, "❌ Bu oyuncu satışta değil.", None
+        fiyat = oyuncu["satis_fiyati"]
+        para = self.para_getir(user_id)
+        if para < fiyat:
+            return False, f"❌ Yetersiz bütçe. Gerekli: {fiyat:,}₺, Mevcut: {para:,}₺", None
+        with self._conn() as conn:
+            kadro = conn.execute(
+                "SELECT COUNT(*) FROM oyuncular WHERE takim_id=? AND satista=0", (takim_id,)
+            ).fetchone()[0]
+            if kadro >= 30:
+                return False, "❌ Kadro dolu (max 30).", None
+            satici_uid = None
+            eski_takim = conn.execute(
+                "SELECT user_id FROM takimlar WHERE takim_id=?", (oyuncu["takim_id"],)
+            ).fetchone() if oyuncu["takim_id"] else None
+            if eski_takim:
+                satici_uid = eski_takim["user_id"]
+                if satici_uid:
+                    conn.execute(
+                        "UPDATE futbol_para SET para=para+? WHERE user_id=?", (fiyat, satici_uid)
+                    )
+            conn.execute(
+                "UPDATE oyuncular SET takim_id=?, satista=0, satis_fiyati=0 WHERE oyuncu_id=?",
+                (takim_id, oyuncu_id)
+            )
+            conn.commit()
+        self.para_guncelle(user_id, -fiyat)
+        return True, f"✅ *{oyuncu['isim']}* transfer edildi! -{fiyat:,}₺", satici_uid
+
+    def sat(self, user_id: int, oyuncu_id: int, fiyat: int) -> tuple:
+        oyuncu = self.oyuncu_getir(oyuncu_id)
+        if not oyuncu:
+            return False, "❌ Oyuncu bulunamadı."
+        with self._conn() as conn:
+            t = conn.execute(
+                "SELECT * FROM takimlar WHERE takim_id=? AND user_id=?",
+                (oyuncu["takim_id"], user_id)
+            ).fetchone()
+        if not t:
+            return False, "❌ Bu oyuncu senin takımında değil."
+        min_fiyat = int(oyuncu["deger"] * 0.5)
+        if fiyat < min_fiyat:
+            return False, f"❌ Minimum satış fiyatı: {min_fiyat:,}₺"
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE oyuncular SET satista=1, satis_fiyati=? WHERE oyuncu_id=?",
+                (fiyat, oyuncu_id)
+            )
+            conn.commit()
+        return True, f"✅ *{oyuncu['isim']}* {fiyat:,}₺'ye satışa çıkarıldı."
+
+    def sat_iptal(self, user_id: int, oyuncu_id: int) -> tuple:
+        oyuncu = self.oyuncu_getir(oyuncu_id)
+        if not oyuncu:
+            return False, "❌ Oyuncu bulunamadı."
+        with self._conn() as conn:
+            t = conn.execute(
+                "SELECT * FROM takimlar WHERE takim_id=? AND user_id=?",
+                (oyuncu["takim_id"], user_id)
+            ).fetchone()
+        if not t:
+            return False, "❌ Bu oyuncu senin takımında değil."
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE oyuncular SET satista=0, satis_fiyati=0 WHERE oyuncu_id=?", (oyuncu_id,)
+            )
+            conn.commit()
+        return True, f"✅ {oyuncu['isim']} satıştan kaldırıldı."
+
+    def antrenman_yap(self, user_id: int, takim_id: int, oyuncu_id: int) -> tuple:
+        oyuncu = self.oyuncu_getir(oyuncu_id)
+        if not oyuncu or oyuncu["takim_id"] != takim_id:
+            return False, "❌ Geçersiz oyuncu."
+        bugun = date.today().isoformat()
+        if oyuncu.get("antrenman_tarihi") == bugun:
+            return False, "⚠️ Bu oyuncu bugün zaten antrenman yaptı."
+        maliyet = 2_000
+        para = self.para_getir(user_id)
+        if para < maliyet:
+            return False, f"❌ Yetersiz bütçe (gerekli {maliyet:,}₺)."
+        artis = random.randint(1, 3) if not oyuncu.get("genc") else random.randint(1, 4)
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE oyuncular SET guc=MIN(99,guc+?), antrenman_tarihi=? WHERE oyuncu_id=?",
+                (artis, bugun, oyuncu_id)
+            )
+            conn.commit()
+        self.para_guncelle(user_id, -maliyet)
+        return True, f"✅ *{oyuncu['isim']}* +{artis} güç! Yeni: {min(99, oyuncu['guc'] + artis)}"
+
+    def altyapi_cikart(self, takim_id: int, user_id: int):
+        para = self.para_getir(user_id)
+        maliyet = 10_000
+        if para < maliyet:
+            return None, f"❌ Altyapı için {maliyet:,}₺ gerekli."
+        kadro = self.takim_oyunculari(takim_id)
+        if len(kadro) >= 30:
+            return None, "❌ Kadro dolu (max 30)."
+        isimler = list({o["isim"] for o in kadro})
+        gen_isimler = [
+            "Arda Güler", "Kenan Yıldız", "Yankı Yıldız", "Emirhan Toprak",
+            "Alex İnce", "Tom Müller Jr", "Pablo Jr", "Lucas Filho",
+            "André Silva", "Mateo García",
+        ]
+        random.shuffle(gen_isimler)
+        isim = next((i for i in gen_isimler if i not in isimler), f"Genç #{random.randint(10,99)}")
+        pozisyon = random.choice(["Kaleci", "Defans", "Defans", "Orta Saha", "Orta Saha", "Forvet"])
+        guc = random.randint(60, 72)
+        deger = self._deger_hesapla(guc)
+        with self._conn() as conn:
+            conn.execute("""
+                INSERT INTO oyuncular (takim_id,isim,pozisyon,guc,deger,ulke,satista,satis_fiyati,genc)
+                VALUES (?,?,?,?,?,'TR',0,?,1)
+            """, (takim_id, isim, pozisyon, guc, deger, deger))
+            conn.commit()
+        self.para_guncelle(user_id, -maliyet)
+        self.basari_ver(user_id, "altyapi")
+        return {"isim": isim, "pozisyon": pozisyon, "guc": guc, "deger": deger}, None
+
+    # ─── Fikstür / Maç Geçmişi ───────────────────────────────────────────
+
+    def son_maclar_lig(self, lig_kodu: str, limit: int = 10) -> list:
         with self._conn() as conn:
             rows = conn.execute("""
-                SELECT t.user_id FROM oyuncular o
-                JOIN takimlar t ON o.takim_id = t.takim_id
-                WHERE o.gol >= 10
-            """).fetchall()
-            for r in rows:
-                self.basari_ver(r["user_id"], "golcu_10")
+                SELECT f.*,
+                    (SELECT isim FROM takimlar WHERE takim_id=f.ev_takim_id)  AS ev_isim,
+                    (SELECT isim FROM takimlar WHERE takim_id=f.dep_takim_id) AS dep_isim
+                FROM fikstur f
+                WHERE f.lig_kodu=? AND f.oynanmis=1
+                ORDER BY f.oynanma_tarihi DESC, f.mac_id DESC LIMIT ?
+            """, (lig_kodu, limit)).fetchall()
+            return [dict(r) for r in rows]
 
-    def son_maclar(self, takim_id: int, limit: int = 5) -> list:
+    def takim_son_maclar(self, takim_id: int, limit: int = 5) -> list:
         with self._conn() as conn:
             rows = conn.execute("""
                 SELECT f.*,
@@ -925,103 +1189,69 @@ class FutbolDB:
             """, (takim_id, takim_id, limit)).fetchall()
             return [dict(r) for r in rows]
 
-    def haftalik_fikstur(self, hafta: int, lig: int = 1) -> list:
+    def haftalik_fikstur(self, hafta: int, lig_kodu: str) -> list:
         with self._conn() as conn:
             rows = conn.execute("""
                 SELECT f.*,
                     (SELECT isim FROM takimlar WHERE takim_id=f.ev_takim_id)  AS ev_isim,
                     (SELECT isim FROM takimlar WHERE takim_id=f.dep_takim_id) AS dep_isim
-                FROM fikstur f WHERE f.hafta=? AND f.lig=? ORDER BY f.mac_id
-            """, (hafta, lig)).fetchall()
+                FROM fikstur f WHERE f.hafta=? AND f.lig_kodu=? ORDER BY f.mac_id
+            """, (hafta, lig_kodu)).fetchall()
             return [dict(r) for r in rows]
 
-    def mevcut_hafta(self, lig: int = 1) -> int:
+    def mevcut_hafta(self, lig_kodu: str) -> int:
         with self._conn() as conn:
             r = conn.execute(
-                "SELECT MAX(hafta) FROM fikstur WHERE oynanmis=1 AND lig=?", (lig,)
+                "SELECT MAX(hafta) FROM fikstur WHERE oynanmis=1 AND lig_kodu=?", (lig_kodu,)
             ).fetchone()[0]
             if r:
                 return r
             r2 = conn.execute(
-                "SELECT MIN(hafta) FROM fikstur WHERE oynanmis=0 AND lig=?", (lig,)
+                "SELECT MIN(hafta) FROM fikstur WHERE oynanmis=0 AND lig_kodu=?", (lig_kodu,)
             ).fetchone()[0]
             return r2 or 1
 
-    # ─── Spin Çarkı ─────────────────────────────────────────────────────────
-
-    def spin_cevir(self, user_id: int):
-        bugun = date.today().isoformat()
+    def sonraki_mac_user(self, user_id: int) -> Optional[dict]:
+        takim = self.takim_user(user_id)
+        if not takim:
+            return None
         with self._conn() as conn:
-            r = conn.execute("SELECT * FROM spin_kaydi WHERE user_id=?", (user_id,)).fetchone()
-            if r and r["son_spin"] == bugun:
-                return None, "Bugün zaten çevirdin! Yarın tekrar gel. 🎰"
-            # Ağırlıklı seçim
-            agirliklar = [o[3] for o in SPIN_ODULLER]
-            odul = random.choices(SPIN_ODULLER, weights=agirliklar, k=1)[0]
-            yeni_toplam = ((r["toplam"] if r else 0) + 1)
-            if r:
-                conn.execute("UPDATE spin_kaydi SET son_spin=?,toplam=? WHERE user_id=?",
-                             (bugun, yeni_toplam, user_id))
+            r = conn.execute("""
+                SELECT * FROM fikstur
+                WHERE (ev_takim_id=? OR dep_takim_id=?) AND oynanmis=0
+                ORDER BY hafta ASC LIMIT 1
+            """, (takim["takim_id"], takim["takim_id"])).fetchone()
+            return dict(r) if r else None
+
+    # ─── İstatistikler ───────────────────────────────────────────────────
+
+    def sezon_golculeri(self, lig_kodu: str = None, limit: int = 20) -> list:
+        with self._conn() as conn:
+            if lig_kodu:
+                rows = conn.execute("""
+                    SELECT o.isim, o.gol, o.asist, t.isim AS takim_isim, t.lig_kodu
+                    FROM oyuncular o JOIN takimlar t ON o.takim_id=t.takim_id
+                    WHERE t.lig_kodu=? AND o.gol > 0
+                    ORDER BY o.gol DESC, o.asist DESC LIMIT ?
+                """, (lig_kodu, limit)).fetchall()
             else:
-                conn.execute("INSERT INTO spin_kaydi VALUES (?,?,?)", (user_id, bugun, yeni_toplam))
-            conn.commit()
-        if odul[1] == "para":
-            self.para_guncelle(user_id, odul[2])
-        elif odul[1] == "xp":
-            pass  # XP bot.py'den eklenir
-        if yeni_toplam >= 5:
-            self.basari_ver(user_id, "spin_5")
-        return odul, yeni_toplam
+                rows = conn.execute("""
+                    SELECT o.isim, o.gol, o.asist, t.isim AS takim_isim, t.lig_kodu
+                    FROM oyuncular o JOIN takimlar t ON o.takim_id=t.takim_id
+                    WHERE o.gol > 0
+                    ORDER BY o.gol DESC, o.asist DESC LIMIT ?
+                """, (limit,)).fetchall()
+            return [dict(r) for r in rows]
 
-    # ─── Bahis ──────────────────────────────────────────────────────────────
-
-    def bahis_yap(self, user_id: int, mac_id: int, hedef_takim_id: int, miktar: int):
-        if miktar < 500:
-            return False, "Minimum bahis 500₺."
-        para = self.para_getir(user_id)
-        if para < miktar:
-            return False, f"Yetersiz bakiye: {para:,}₺"
-        with self._conn() as conn:
-            mevcut = conn.execute(
-                "SELECT COUNT(*) FROM bahisler WHERE mac_id=? AND user_id=? AND odendi=0",
-                (mac_id, user_id)
-            ).fetchone()[0]
-            if mevcut:
-                return False, "Bu maça zaten bahis yaptın."
-            mac = conn.execute("SELECT * FROM fikstur WHERE mac_id=?", (mac_id,)).fetchone()
-            if not mac or mac["oynanmis"]:
-                return False, "Maç bulunamadı veya zaten oynandı."
-            if hedef_takim_id not in (mac["ev_takim_id"], mac["dep_takim_id"]):
-                return False, "Bu takım bu maçta oynamıyor."
-            conn.execute(
-                "INSERT INTO bahisler (mac_id,user_id,hedef_takim,miktar) VALUES (?,?,?,?)",
-                (mac_id, user_id, hedef_takim_id, miktar)
-            )
-            conn.commit()
-        self.para_guncelle(user_id, -miktar)
-        t = self.takim_id(hedef_takim_id)
-        return True, f"✅ *{t['isim']}* için {miktar:,}₺ bahis yaptın! (x2 kazanç)"
-
-    def _bahis_ode(self, mac_id: int, kazanan_id: Optional[int]):
-        with self._conn() as conn:
-            bahisler = conn.execute(
-                "SELECT * FROM bahisler WHERE mac_id=? AND odendi=0", (mac_id,)
-            ).fetchall()
-            for b in [dict(x) for x in bahisler]:
-                if kazanan_id and b["hedef_takim"] == kazanan_id:
-                    self.para_guncelle(b["user_id"], b["miktar"] * 2)
-                    self.basari_ver(b["user_id"], "bahis_kazan")
-                conn.execute("UPDATE bahisler SET odendi=1 WHERE bahis_id=?", (b["bahis_id"],))
-            conn.commit()
-
-    def mac_bahisleri(self, mac_id: int) -> list:
+    def oyuncu_istatistikleri(self, takim_id: int) -> list:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM bahisler WHERE mac_id=? AND odendi=0", (mac_id,)
+                "SELECT * FROM oyuncular WHERE takim_id=? ORDER BY gol DESC, asist DESC",
+                (takim_id,)
             ).fetchall()
             return [dict(r) for r in rows]
 
-    # ─── Başarılar ──────────────────────────────────────────────────────────
+    # ─── Başarı ──────────────────────────────────────────────────────────
 
     def basari_ver(self, user_id: int, kod: str) -> bool:
         if kod not in BASARILAR:
@@ -1045,171 +1275,61 @@ class FutbolDB:
             ).fetchall()
             return [dict(r) for r in rows]
 
-    # ─── Cumhuriyet Kupası ───────────────────────────────────────────────────
-
-    def kupa_olustur(self, sezon: int = 1):
-        with self._conn() as conn:
-            mevcut = conn.execute(
-                "SELECT COUNT(*) FROM kupa_maclar WHERE sezon=?", (sezon,)
-            ).fetchone()[0]
-            if mevcut:
-                return False, "Kupa bu sezon zaten oluşturuldu."
-        tum = []
-        for lig in (1, 2):
-            tum.extend(self.tum_takimlar(lig))
-        if len(tum) < 2:
-            return False, "En az 2 takım gerekli."
-        ids = [t["takim_id"] for t in tum]
-        random.shuffle(ids)
-        n = 1
-        while n < len(ids):
-            n *= 2
-        while len(ids) < n:
-            ids.append(None)
-        with self._conn() as conn:
-            for i in range(0, n, 2):
-                ev, dep = ids[i], ids[i + 1]
-                if ev and dep:
-                    conn.execute("""
-                        INSERT INTO kupa_maclar (tur,ev_takim_id,dep_takim_id,oynanmis,sezon)
-                        VALUES (1,?,?,0,?)
-                    """, (ev, dep, sezon))
-                elif ev:
-                    conn.execute("""
-                        INSERT INTO kupa_maclar (tur,ev_takim_id,dep_takim_id,ev_gol,dep_gol,oynanmis,sezon)
-                        VALUES (1,?,NULL,3,0,1,?)
-                    """, (ev, sezon))
-            conn.commit()
-        return True, f"🏅 Cumhuriyet Kupası {len(tum)} takımla başladı!"
-
-    def kupa_sonraki_mac(self, user_id: int, sezon: int = 1) -> Optional[dict]:
+    def _mac_basari_kontrol(self, user_id: int, kazandi: bool):
+        self.basari_ver(user_id, "ilk_mac")
+        if not kazandi:
+            return
         takim = self.takim_user(user_id)
         if not takim:
-            return None
-        tid = takim["takim_id"]
-        with self._conn() as conn:
-            r = conn.execute("""
-                SELECT * FROM kupa_maclar
-                WHERE (ev_takim_id=? OR dep_takim_id=?) AND oynanmis=0 AND sezon=?
-                ORDER BY tur ASC LIMIT 1
-            """, (tid, tid, sezon)).fetchone()
-            return dict(r) if r else None
+            return
+        g = takim["galibiyet"]
+        for esik, kod in [(5, "5_galibiyet"), (10, "10_galibiyet"), (25, "25_galibiyet")]:
+            if g >= esik:
+                self.basari_ver(user_id, kod)
 
-    def kupa_mac_oyna(self, mac_id: int, talep_eden: int, sezon: int = 1):
-        with self._conn() as conn:
-            r = conn.execute("SELECT * FROM kupa_maclar WHERE mac_id=?", (mac_id,)).fetchone()
-            if not r:
-                return None, "Kupa maçı bulunamadı."
-            mac = dict(r)
-        if mac["oynanmis"]:
-            return None, "Bu maç zaten oynandı."
-        if talep_eden not in (mac["ev_takim_id"], mac["dep_takim_id"]):
-            return None, "Bu senin kupa maçın değil."
-        ev_t = self.takim_id(mac["ev_takim_id"])
-        dep_t = self.takim_id(mac["dep_takim_id"])
-        ev_guc = self.takim_gucu(mac["ev_takim_id"])
-        dep_guc = self.takim_gucu(mac["dep_takim_id"])
-        ev_oran = (ev_guc * 1.05) / ((ev_guc * 1.05) + dep_guc)
-        ev_gol = max(0, min(9, round(random.gauss(ev_oran * 3.5, 1.2))))
-        dep_gol = max(0, min(9, round(random.gauss((1 - ev_oran) * 3.5, 1.2))))
-        uzatma = False
-        if ev_gol == dep_gol:
-            uzatma = True
-            ev_gol += random.randint(0, 2)
-            dep_gol += random.randint(0, 2)
-            if ev_gol == dep_gol:
-                ev_gol += random.randint(0, 1)
-        kazanan_id = mac["ev_takim_id"] if ev_gol > dep_gol else mac["dep_takim_id"]
-        kaybeden_id = mac["dep_takim_id"] if ev_gol > dep_gol else mac["ev_takim_id"]
-        kazanan_t = self.takim_id(kazanan_id)
-        kaybeden_t = self.takim_id(kaybeden_id)
-        bugun = date.today().isoformat()
-        with self._conn() as conn:
-            conn.execute("""
-                UPDATE kupa_maclar SET ev_gol=?,dep_gol=?,oynanmis=1,oynanma_tarihi=?
-                WHERE mac_id=?
-            """, (ev_gol, dep_gol, bugun, mac_id))
-            conn.commit()
-        self.para_guncelle(kazanan_t["user_id"], 8_000)
-        self.para_guncelle(kaybeden_t["user_id"], 2_000)
-        # Şampiyon kontrolü: bu turda başka oynanmamış maç var mı?
-        with self._conn() as conn:
-            kalan = conn.execute(
-                "SELECT COUNT(*) FROM kupa_maclar WHERE tur=? AND oynanmis=0 AND sezon=?",
-                (mac["tur"], sezon)
-            ).fetchone()[0]
-        sampiyon = None
-        if kalan == 0:
-            with self._conn() as conn:
-                # Kazananları bir üst tura ekle
-                galip_ids = [
-                    dict(r)["ev_takim_id"] if dict(r)["ev_gol"] > dict(r)["dep_gol"] else dict(r)["dep_takim_id"]
-                    for r in conn.execute(
-                        "SELECT * FROM kupa_maclar WHERE tur=? AND sezon=?", (mac["tur"], sezon)
-                    ).fetchall()
-                    if dict(r)["dep_takim_id"] is not None
-                ]
-            if len(galip_ids) == 1:
-                sampiyon = self.takim_id(galip_ids[0])
-                if sampiyon:
-                    self.basari_ver(sampiyon["user_id"], "kupa_sampiyon")
-                    self.para_guncelle(sampiyon["user_id"], 50_000)
-            elif len(galip_ids) > 1:
-                random.shuffle(galip_ids)
-                if len(galip_ids) % 2 == 1:
-                    galip_ids.append(None)
-                with self._conn() as conn:
-                    for i in range(0, len(galip_ids), 2):
-                        ev2, dep2 = galip_ids[i], galip_ids[i + 1]
-                        if ev2 and dep2:
-                            conn.execute("""
-                                INSERT INTO kupa_maclar (tur,ev_takim_id,dep_takim_id,oynanmis,sezon)
-                                VALUES (?,?,?,0,?)
-                            """, (mac["tur"] + 1, ev2, dep2, sezon))
-                        elif ev2:
-                            conn.execute("""
-                                INSERT INTO kupa_maclar (tur,ev_takim_id,dep_takim_id,ev_gol,dep_gol,oynanmis,sezon)
-                                VALUES (?,?,NULL,3,0,1,?)
-                            """, (mac["tur"] + 1, ev2, sezon))
-                    conn.commit()
-        return {
-            "mac_id": mac_id,
-            "tur": mac["tur"],
-            "ev_takim": ev_t["isim"],
-            "dep_takim": dep_t["isim"],
-            "ev_takim_id": mac["ev_takim_id"],
-            "dep_takim_id": mac["dep_takim_id"],
-            "ev_takim_user": ev_t["user_id"],
-            "dep_takim_user": dep_t["user_id"],
-            "ev_gol": ev_gol,
-            "dep_gol": dep_gol,
-            "kazanan_id": kazanan_id,
-            "kazanan_isim": kazanan_t["isim"],
-            "uzatma": uzatma,
-            "sampiyon": sampiyon,
-        }, None
-
-    def kupa_tablo(self, sezon: int = 1) -> list:
+    def _golcu_basari_kontrol(self):
         with self._conn() as conn:
             rows = conn.execute("""
-                SELECT k.*,
-                    (SELECT isim FROM takimlar WHERE takim_id=k.ev_takim_id)  AS ev_isim,
-                    (SELECT isim FROM takimlar WHERE takim_id=k.dep_takim_id) AS dep_isim
-                FROM kupa_maclar k WHERE k.sezon=? ORDER BY k.tur, k.mac_id
-            """, (sezon,)).fetchall()
-            return [dict(r) for r in rows]
+                SELECT t.user_id FROM oyuncular o
+                JOIN takimlar t ON o.takim_id = t.takim_id
+                WHERE o.gol >= 10 AND t.user_id IS NOT NULL
+            """).fetchall()
+            for r in rows:
+                if r["user_id"]:
+                    self.basari_ver(r["user_id"], "golcu_10")
 
-    # ─── Sezon Sıfırlama ────────────────────────────────────────────────────
+    # ─── Spin ────────────────────────────────────────────────────────────
 
-    def sezon_sampiyon(self, lig: int = 1) -> Optional[dict]:
-        t = self.tum_takimlar(lig)
-        return t[0] if t else None
+    def spin_cevir(self, user_id: int):
+        bugun = date.today().isoformat()
+        with self._conn() as conn:
+            r = conn.execute("SELECT * FROM spin_kaydi WHERE user_id=?", (user_id,)).fetchone()
+            if r and r["son_spin"] == bugun:
+                return None, "Bugün zaten çevirdin! Yarın tekrar gel. 🎰"
+            agirliklar = [o[3] for o in SPIN_ODULLER]
+            odul = random.choices(SPIN_ODULLER, weights=agirliklar, k=1)[0]
+            yeni_toplam = ((r["toplam"] if r else 0) + 1)
+            if r:
+                conn.execute("UPDATE spin_kaydi SET son_spin=?,toplam=? WHERE user_id=?",
+                             (bugun, yeni_toplam, user_id))
+            else:
+                conn.execute("INSERT INTO spin_kaydi VALUES (?,?,?)", (user_id, bugun, yeni_toplam))
+            conn.commit()
+        if odul[1] == "para":
+            self.para_guncelle(user_id, odul[2])
+        if yeni_toplam >= 5:
+            self.basari_ver(user_id, "spin_5")
+        return odul, yeni_toplam
 
-    def sezon_sifirla(self, lig: int = 1):
-        takimlar = self.tum_takimlar(lig)
+    # ─── Sezon Sıfırlama ─────────────────────────────────────────────────
+
+    def sezon_sifirla(self, lig_kodu: str):
+        takimlar = self.lig_takimlari(lig_kodu)
         if takimlar:
-            self.basari_ver(takimlar[0]["user_id"],
-                            "sezon_sampiyon" if lig == 1 else "lig2_sampiyonu")
+            sampiyon = takimlar[0]
+            uid = sampiyon.get("user_id")
+            if uid:
+                self.basari_ver(uid, "sezon_sampiyon")
         with self._conn() as conn:
             for t in takimlar:
                 conn.execute("""
@@ -1221,11 +1341,12 @@ class FutbolDB:
                     UPDATE oyuncular SET gol=0,asist=0,sari_kart=0,kirmizi_kart=0
                     WHERE takim_id=?
                 """, (t["takim_id"],))
-            conn.execute("DELETE FROM fikstur WHERE lig=?", (lig,))
+            conn.execute("DELETE FROM fikstur WHERE lig_kodu=?", (lig_kodu,))
+            conn.execute("UPDATE lig_durumu SET aktif=0 WHERE lig_kodu=?", (lig_kodu,))
             conn.commit()
         return len(takimlar)
 
-    # ─── Grup Bildirimi ─────────────────────────────────────────────────────
+    # ─── Grup ────────────────────────────────────────────────────────────
 
     def grup_kaydet(self, chat_id: int):
         with self._conn() as conn:
